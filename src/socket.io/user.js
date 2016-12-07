@@ -66,6 +66,14 @@ SocketUser.emailExists = function (socket, data, callback) {
 	user.email.exists(data.email, callback);
 };
 
+// Added this method to support the register page. It is used to check if there is a user with the same phone number
+SocketUser.phoneExists = function(socket, data, callback) {
+	if (!data || !data.phone) {
+		return callback(new Error('Phone number already exists'));
+	}
+	user.email.phoneExists(data.phone, callback);
+};
+
 SocketUser.emailConfirm = function (socket, data, callback) {
 	if (!socket.uid) {
 		return callback(new Error('[[error:no-privileges]]'));
