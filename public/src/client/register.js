@@ -13,6 +13,7 @@ define('forum/register', ['translator'], function (translator) {
 			username = $('#username'),
 			password = $('#password'),
 			password_confirm = $('#password-confirm'),
+			phone = $('#phone'),
 			register = $('#register');
 
 		handleLanguageOverride();
@@ -22,6 +23,19 @@ define('forum/register', ['translator'], function (translator) {
 		email.on('blur', function () {
 			if (email.val().length) {
 				validateEmail(email.val());
+				
+				var userNameAutoCompleted = '', emailValue = email.val();
+				if(emailValue.length > 0) {
+					userNameAutoCompleted = emailValue.substring(0, emailValue.indexOf('@'));
+					username.val(userNameAutoCompleted);
+				}
+
+			}
+		});
+
+		phone.on('blur', function() {
+			if(phone.val().length) {
+				validatePhone(phone.val());
 			}
 		});
 
@@ -60,7 +74,9 @@ define('forum/register', ['translator'], function (translator) {
 			validatePasswordConfirm(password.val(), password_confirm.val());
 
 			validateEmail(email.val(), function () {
-				validateUsername(username.val(), callback);
+				validatePhone(phone.val(), function() {
+					validateUsername(username.val(), callback);	
+				});
 			});
 		}
 
@@ -133,6 +149,33 @@ define('forum/register', ['translator'], function (translator) {
 				showError(email_notify, '[[error:email-taken]]');
 			} else {
 				showSuccess(email_notify, successIcon);
+			}
+
+			callback();
+		});
+	}
+
+	function validatePhone(phone, callback) {
+		callback = callback || function() {};
+		var phone_notify = $('#phone-notify');
+
+		if (phone.length != 10) {
+			showError(phone_notify, 'Invalid phone number');
+			return callback();
+		}
+
+		socket.emit('user.phoneExists', {
+			phone: phone
+		}, function(err, exists) {
+			if (err) {
+				app.alertError(err.message);
+				return callback();
+			}
+
+			if (exists) {
+				showError(phone_notify, 'Phone number is taken');
+			} else {
+				showSuccess(phone_notify, successIcon);
 			}
 
 			callback();

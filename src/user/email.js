@@ -20,6 +20,12 @@ var emailer = require('../emailer');
 		});
 	};
 
+	UserEmail.phoneExists = function(phone, callback) {
+		db.isSortedSetMember('phone:uid', phone, function(err, exists) {
+			callback(err, !!exists);
+		});
+	};
+
 	UserEmail.available = function (email, callback) {
 		db.isSortedSetMember('email:uid', email.toLowerCase(), function (err, exists) {
 			callback(err, !exists);
