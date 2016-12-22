@@ -31,6 +31,10 @@ module.exports = function (Topics) {
 					return tag && tag.length >= (meta.config.minimumTagLength || 3) && array.indexOf(tag) === index;
 				});
 
+				filterCategoryTags(tags, tid, next);
+			},
+			function (_tags, next) {
+				tags = _tags;
 				var keys = tags.map(function (tag) {
 					return 'tag:' + tag + ':topics';
 				});
@@ -39,14 +43,34 @@ module.exports = function (Topics) {
 					async.apply(db.setAdd, 'topic:' + tid + ':tags', tags),
 					async.apply(db.sortedSetsAdd, keys, timestamp, tid)
 				], function (err) {
-					if (err) {
-						return next(err);
-					}
-					async.each(tags, updateTagCount, next);
+					next(err);
 				});
+			},
+			function (next) {
+				async.each(tags, updateTagCount, next);
 			}
 		], callback);
 	};
+
+	function filterCategoryTags(tags, tid, callback) {
+		async.waterfall([
+			function (next) {
+				Topics.getTopicField(tid, 'cid', next);
+			},
+			function (cid, next) {
+				db.getSortedSetRange('cid:' + cid + ':tag:whitelist', 0, -1, next);
+			},
+			function (tagWhitelist, next) {
+				if (!tagWhitelist.length) {
+					return next(null, tags);
+				}
+				tags = tags.filter(function (tag) {
+					return tagWhitelist.indexOf(tag) !== -1;
+				});
+				next(null, tags);
+			}
+		], callback);
+	}
 
 	Topics.createEmptyTag = function (tag, callback) {
 		if (!tag) {
@@ -72,19 +96,24 @@ module.exports = function (Topics) {
 	};
 
 	Topics.updateTag = function (tag, data, callback) {
+		if (!tag) {
+			return setImmediate(callback, new Error('[[error:invalid-tag]]'));
+		}
 		db.setObject('tag:' + tag, data, callback);
 	};
 
 	function updateTagCount(tag, callback) {
 		callback = callback || function () {};
-		Topics.getTagTopicCount(tag, function (err, count) {
-			if (err) {
-				return callback(err);
-			}
-			count = count || 0;
+		async.waterfall([
+			function (next) {
+				Topics.getTagTopicCount(tag, next);
+			},
+			function (count, next) {
+				count = count || 0;
 
-			db.sortedSetAdd('tags:topic:count', count, tag, callback);
-		});
+				db.sortedSetAdd('tags:topic:count', count, tag, next);
+			}
+		], callback);
 	}
 
 	Topics.getTagTids = function (tag, start, stop, callback) {
@@ -112,6 +141,11 @@ module.exports = function (Topics) {
 			},
 			function (next) {
 				db.sortedSetRemove('tags:topic:count', tags, next);
+			},
+			function (next) {
+				db.deleteAll(tags.map(function (tag) {
+					return 'tag:' + tag;
+				}), next);
 			}
 		], callback);
 	};
@@ -131,19 +165,19 @@ module.exports = function (Topics) {
 		}, callback);
 	}
 
-	Topics.deleteTag = function (tag) {
-		db.delete('tag:' + tag + ':topics');
-		db.sortedSetRemove('tags:topic:count', tag);
+	Topics.deleteTag = function (tag, callback) {
+		Topics.deleteTags([tag], callback);
 	};
 
 	Topics.getTags = function (start, stop, callback) {
-		db.getSortedSetRevRangeWithScores('tags:topic:count', start, stop, function (err, tags) {
-			if (err) {
-				return callback(err);
+		async.waterfall([
+			function (next) {
+				db.getSortedSetRevRangeWithScores('tags:topic:count', start, stop, next);
+			},
+			function (tags, next) {
+				Topics.getTagData(tags, next);
 			}
-
-			Topics.getTagData(tags, callback);
-		});
+		], callback);
 	};
 
 	Topics.getTagData = function (tags, callback) {
@@ -151,21 +185,29 @@ module.exports = function (Topics) {
 			return 'tag:' + tag.value;
 		});
 
-		db.getObjects(keys, function (err, tagData) {
-			if (err) {
-				return callback(err);
+		async.waterfall([
+			function (next) {
+				db.getObjects(keys, next);
+			},
+			function (tagData, next) {
+				tags.forEach(function (tag, index) {
+					tag.color = tagData[index] ? tagData[index].color : '';
+					tag.bgColor = tagData[index] ? tagData[index].bgColor : '';
+				});
+				next(null, tags);
 			}
-
-			tags.forEach(function (tag, index) {
-				tag.color = tagData[index] ? tagData[index].color : '';
-				tag.bgColor = tagData[index] ? tagData[index].bgColor : '';
-			});
-			callback(null, tags);
-		});
+		], callback);
 	};
 
 	Topics.getTopicTags = function (tid, callback) {
 		db.getSetMembers('topic:' + tid + ':tags', callback);
+	};
+
+	Topics.getTopicsTags = function (tids, callback) {
+		var keys = tids.map(function (tid) {
+			return 'topic:' + tid + ':tags';
+		});
+		db.getSetsMembers(keys, callback);
 	};
 
 	Topics.getTopicTagsObjects = function (tid, callback) {
@@ -273,7 +315,7 @@ module.exports = function (Topics) {
 				if (plugins.hasListeners('filter:topics.searchTags')) {
 					plugins.fireHook('filter:topics.searchTags', {data: data}, next);
 				} else {
-					findMatches(data.query, next);
+					findMatches(data.query, 0, next);
 				}
 			},
 			function (result, next) {
@@ -295,7 +337,7 @@ module.exports = function (Topics) {
 				if (plugins.hasListeners('filter:topics.autocompleteTags')) {
 					plugins.fireHook('filter:topics.autocompleteTags', {data: data}, next);
 				} else {
-					findMatches(data.query, next);
+					findMatches(data.query, data.cid, next);
 				}
 			},
 			function (result, next) {
@@ -304,10 +346,21 @@ module.exports = function (Topics) {
 		], callback);
 	};
 
-	function findMatches(query, callback) {
+	function findMatches(query, cid, callback) {
 		async.waterfall([
 			function (next) {
-				db.getSortedSetRevRange('tags:topic:count', 0, -1, next);
+				if (parseInt(cid, 10)) {
+					db.getSortedSetRange('cid:' + cid + ':tag:whitelist', 0, -1, next);
+				} else {
+					setImmediate(next, null, []);
+				}
+			},
+			function (tagWhitelist, next) {
+				if (tagWhitelist.length) {
+					setImmediate(next, null, tagWhitelist);
+				} else {
+					db.getSortedSetRevRange('tags:topic:count', 0, -1, next);
+				}
 			},
 			function (tags, next) {
 				query = query.toLowerCase();

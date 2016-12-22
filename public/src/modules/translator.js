@@ -5,16 +5,27 @@
 	function loadClient(language, namespace) {
 		return Promise.resolve(jQuery.getJSON(config.relative_path + '/api/language/' + language + '/' + encodeURIComponent(namespace)));
 	}
+	var warn = function () {};
+	if (typeof config === 'object' && config.environment === 'development') {
+		warn = console.warn.bind(console);
+	}
 	if (typeof define === 'function' && define.amd) {
 		// AMD. Register as a named module
 		define('translator', ['string'], function (string) {
-			return factory(string, loadClient);
+			return factory(string, loadClient, warn);
 		});
 	} else if (typeof module === 'object' && module.exports) {
 		// Node
 		(function () {
 			require('promise-polyfill');
 			var languages = require('../../../src/languages');
+
+			if (global.env === 'development') {
+				var winston = require('winston');
+				warn = function (a) {
+					winston.warn(a);
+				};
+			}
 
 			function loadServer(language, namespace) {
 				return new Promise(function (resolve, reject) {
@@ -28,12 +39,12 @@
 				});
 			}
 
-			module.exports = factory(require('string'), loadServer);
+			module.exports = factory(require('string'), loadServer, warn);
 		}());
 	} else {
-		window.translator = factory(window.string, loadClient);
+		window.translator = factory(window.string, loadClient, warn);
 	}
-}(function (string, load) {
+}(function (string, load, warn) {
 	'use strict';
 	var assign = Object.assign || jQuery.extend;
 	function classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -105,7 +116,7 @@
 					} else if (text.slice(i, i + 2) === ']]') {
 						level -= 1;
 						i += 1;
-					} else if (level === 0 && text[i] === ',') {
+					} else if (level === 0 && text[i] === ',' && text[i - 1] !== '\\') {
 						arr.push(text.slice(brk, i).trim());
 						i += 1;
 						brk = i;
@@ -238,6 +249,7 @@
 			}
 
 			if (namespace && !key) {
+				warn('Missing key in translation token "' + name + '"');
 				return Promise.resolve('[[' + namespace + ']]');
 			}
 
@@ -256,11 +268,13 @@
 				var translatedArgs = result.slice(1);
 
 				if (!translated) {
+					warn('Missing translation "' + name + '"');
 					return key;
 				}
 				var out = translated;
 				translatedArgs.forEach(function (arg, i) {
-					out = out.replace(new RegExp('%' + (i + 1), 'g'), arg);
+					var escaped = arg.replace(/%/g, '&#37;').replace(/\\,/g, '&#44;');
+					out = out.replace(new RegExp('%' + (i + 1), 'g'), escaped);
 				});
 				return out;
 			});
@@ -275,7 +289,7 @@
 		Translator.prototype.getTranslation = function getTranslation(namespace, key) {
 			var translation;
 			if (!namespace) {
-				console.warn('[translator] Parameter `namespace` is ' + namespace + (namespace === '' ? '(empty string)' : ''));
+				warn('[translator] Parameter `namespace` is ' + namespace + (namespace === '' ? '(empty string)' : ''));
 				translation = Promise.resolve({});
 			} else {
 				translation = this.translations[namespace] = this.translations[namespace] || this.load(this.lang, namespace);
@@ -394,9 +408,14 @@
 
 		/**
 		 * Construct a translator pattern
+		 * @param {string} name - Translation name
+		 * @param {...string} arg - Optional argument for the pattern
 		 */
 		Translator.compile = function compile() {
-			var args = Array.prototype.slice.call(arguments, 0);
+			var args = Array.prototype.slice.call(arguments, 0).map(function (text) {
+				// escape commas and percent signs in arguments
+				return text.replace(/%/g, '&#37;').replace(/,/g, '&#44;');
+			});
 
 			return '[[' + args.join(', ') + ']]';
 		};
@@ -435,7 +454,7 @@
 			Translator.create(lang).translate(text).then(function (output) {
 				return cb(output);
 			}).catch(function (err) {
-				console.error('Translation failed: ' + err.stack);
+				warn('Translation failed: ' + err.stack);
 			});
 		},
 
