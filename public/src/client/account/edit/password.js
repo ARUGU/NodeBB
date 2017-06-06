@@ -1,8 +1,7 @@
 'use strict';
 
-/* globals define, ajaxify, socket, app, utils */
 
-define('forum/account/edit/password', ['forum/account/header', 'translator'], function (header, translator) {
+define('forum/account/edit/password', ['forum/account/header', 'translator', 'zxcvbn'], function (header, translator, zxcvbn) {
 	var AccountEditPassword = {};
 
 	AccountEditPassword.init = function () {
@@ -21,6 +20,7 @@ define('forum/account/edit/password', ['forum/account/header', 'translator'], fu
 		var passwordsmatch = false;
 
 		function onPasswordChanged() {
+			var passwordStrength = zxcvbn(password.val());
 			passwordvalid = false;
 			if (password.val().length < ajaxify.data.minimumPasswordLength) {
 				showError(password_notify, '[[user:change_password_error_length]]');
@@ -30,6 +30,8 @@ define('forum/account/edit/password', ['forum/account/header', 'translator'], fu
 				showError(password_notify, '[[user:password_same_as_username]]');
 			} else if (password.val() === ajaxify.data.email) {
 				showError(password_notify, '[[user:password_same_as_email]]');
+			} else if (passwordStrength.score < ajaxify.data.minimumPasswordStrength) {
+				showError(password_notify, '[[user:weak_password]]');
 			} else {
 				showSuccess(password_notify);
 				passwordvalid = true;
@@ -64,9 +66,9 @@ define('forum/account/edit/password', ['forum/account/header', 'translator'], fu
 			if ((passwordvalid && passwordsmatch) || app.user.isAdmin) {
 				btn.addClass('disabled').find('i').removeClass('hide');
 				socket.emit('user.changePassword', {
-					'currentPassword': currentPassword.val(),
-					'newPassword': password.val(),
-					'uid': ajaxify.data.theirid
+					currentPassword: currentPassword.val(),
+					newPassword: password.val(),
+					uid: ajaxify.data.theirid,
 				}, function (err) {
 					btn.removeClass('disabled').find('i').addClass('hide');
 					currentPassword.val('');
@@ -80,8 +82,8 @@ define('forum/account/edit/password', ['forum/account/header', 'translator'], fu
 						onPasswordConfirmChanged();
 						return app.alertError(err.message);
 					}
-					ajaxify.go('user/' + ajaxify.data.userslug);
-					app.alertSuccess('[[user:change_password_success]]');
+
+					window.location.href = config.relative_path + '/login';
 				});
 			} else {
 				if (!passwordsmatch) {

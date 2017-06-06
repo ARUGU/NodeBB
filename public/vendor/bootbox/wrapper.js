@@ -1,45 +1,20 @@
 /* global bootbox */
 
 require(['translator'], function (shim) {
-	"use strict";
-
-	function descendantTextNodes(node) {
-		var textNodes = [];
-
-		function helper(node) {
-			if (node.nodeType === 3) {
-				textNodes.push(node);
-			} else {
-				for (var i = 0, c = node.childNodes, l = c.length; i < l; i += 1) {
-					helper(c[i]);
-				}
-			}
-		}
-
-		helper(node);
-		return textNodes;
-	}
+	'use strict';
 
 	var translator = shim.Translator.create();
 	var dialog = bootbox.dialog;
+	var attrsToTranslate = ['placeholder', 'title', 'value'];
 	bootbox.dialog = function (options) {
-		var show, $elem, nodes, text;
-
-		show = options.show !== false;
+		var show = options.show !== false;
 		options.show = false;
 
-		$elem = dialog.call(bootbox, options);
+		var $elem = dialog.call(bootbox, options);
+		var element = $elem[0];
 
-		if (/\[\[.+\]\]/.test($elem[0].outerHTML)) {
-			nodes = descendantTextNodes($elem[0]);
-			text = nodes.map(function (node) {
-				return node.nodeValue;
-			}).join('  ||  ');
-
-			translator.translate(text).then(function (translated) {
-				translated.split('  ||  ').forEach(function (html, i) {
-					$(nodes[i]).replaceWith(html);
-				});
+		if (/\[\[.+\]\]/.test(element.outerHTML)) {
+			translator.translateInPlace(element, attrsToTranslate).then(function () {
 				if (show) {
 					$elem.modal('show');
 				}
@@ -62,7 +37,7 @@ require(['translator'], function (shim) {
 			CANCEL: translations[1],
 			CONFIRM: translations[2],
 		});
-		
+
 		bootbox.setLocale(lang);
 	});
 });

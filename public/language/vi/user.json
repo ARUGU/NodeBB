@@ -33,6 +33,7 @@
     "chat": "Chat",
     "chat_with": "Continue chat with %1",
     "new_chat_with": "Start new chat with %1",
+    "flag-profile": "Flag Profile",
     "follow": "Theo dõi",
     "unfollow": "Hủy theo dõi",
     "more": "Xem thêm",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "Tên truy cập này đã tồn tại, vì vậy chúng tôi đã sửa đổi nó một chút. Tên truy cập của bạn giờ là <strong>%1</strong>",
     "password_same_as_username": "Mật khẩu của bạn trùng với tên đăng nhập, vui lòng chọn một mật khẩu khác.",
     "password_same_as_email": "Mật khẩu của bạn trùng với email của bạn, hãy chọn mật khẩu khác.",
+    "weak_password": "Weak password.",
     "upload_picture": "Tải lên hình ảnh",
     "upload_a_picture": "Tải lên một hình ảnh",
     "remove_uploaded_picture": "Xoá ảnh đã tải lên",
     "upload_cover_picture": "Tải ảnh bìa lên",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "Thiết lập",
     "show_email": "Hiện Email của tôi",
     "show_fullname": "Hiện tên đầy đủ",
@@ -126,5 +131,6 @@
     "info.username-history": "Lịch sử tên người d",
     "info.email-history": "Lịch sử email",
     "info.moderation-note": "Ghi chú quản lí",
-    "info.moderation-note.success": "Đã lưu ghi chú quản l"
+    "info.moderation-note.success": "Đã lưu ghi chú quản l",
+    "info.moderation-note.add": "Add note"
 }

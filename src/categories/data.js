@@ -7,34 +7,20 @@ var winston = require('winston');
 var db = require('../database');
 
 module.exports = function (Categories) {
-
 	Categories.getCategoryData = function (cid, callback) {
-		db.getObject('category:' + cid, function (err, category) {
-			if (err) {
-				return callback(err);
-			}
-
-			modifyCategory(category);
-			callback(null, category);
-		});
+		async.waterfall([
+			function (next) {
+				db.getObject('category:' + cid, next);
+			},
+			function (category, next) {
+				modifyCategory(category);
+				next(null, category);
+			},
+		], callback);
 	};
 
 	Categories.getCategoriesData = function (cids, callback) {
-		if (!Array.isArray(cids) || !cids.length) {
-			return callback(null, []);
-		}
-		var keys = cids.map(function (cid) {
-			return 'category:' + cid;
-		});
-
-		db.getObjects(keys, function (err, categories) {
-			if (err || !Array.isArray(categories) || !categories.length) {
-				return callback(err, []);
-			}
-
-			categories.forEach(modifyCategory);
-			callback(null, categories);
-		});
+		Categories.getCategoriesFields(cids, [], callback);
 	};
 
 	function modifyCategory(category) {
@@ -44,13 +30,16 @@ module.exports = function (Categories) {
 
 		category.name = validator.escape(String(category.name || ''));
 		category.disabled = category.hasOwnProperty('disabled') ? parseInt(category.disabled, 10) === 1 : undefined;
+		category.isSection = category.hasOwnProperty('isSection') ? parseInt(category.isSection, 10) === 1 : undefined;
 		category.icon = category.icon || 'hidden';
 		if (category.hasOwnProperty('post_count')) {
-			category.post_count = category.totalPostCount = category.post_count || 0;
+			category.post_count = category.post_count || 0;
+			category.totalPostCount = category.post_count;
 		}
 
 		if (category.hasOwnProperty('topic_count')) {
-			category.topic_count = category.totalTopicCount = category.topic_count || 0;
+			category.topic_count = category.topic_count || 0;
+			category.totalTopicCount = category.topic_count;
 		}
 
 		if (category.image) {
@@ -75,15 +64,19 @@ module.exports = function (Categories) {
 		var keys = cids.map(function (cid) {
 			return 'category:' + cid;
 		});
-
-		db.getObjectsFields(keys, fields, function (err, categories) {
-			if (err) {
-				return callback(err);
-			}
-
-			categories.forEach(modifyCategory);
-			callback(null, categories);
-		});
+		async.waterfall([
+			function (next) {
+				if (fields.length) {
+					db.getObjectsFields(keys, fields, next);
+				} else {
+					db.getObjects(keys, next);
+				}
+			},
+			function (categories, next) {
+				categories.forEach(modifyCategory);
+				next(null, categories);
+			},
+		], callback);
 	};
 
 	Categories.getMultipleCategoryFields = function (cids, fields, callback) {
@@ -96,7 +89,7 @@ module.exports = function (Categories) {
 			async.apply(db.getSortedSetRange, 'categories:cid', 0, -1),
 			function (cids, next) {
 				Categories.getCategoriesFields(cids, fields, next);
-			}
+			},
 		], callback);
 	};
 
@@ -111,5 +104,4 @@ module.exports = function (Categories) {
 	Categories.incrementCategoryFieldBy = function (cid, field, value, callback) {
 		db.incrObjectFieldBy('category:' + cid, field, value, callback);
 	};
-
 };

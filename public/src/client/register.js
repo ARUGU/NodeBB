@@ -1,20 +1,26 @@
 'use strict';
 
-/* globals define, app, utils, socket, config, ajaxify, bootbox */
 
-
-define('forum/register', ['translator'], function (translator) {
-	var Register = {},
-		validationError = false,
-		successIcon = '';
+define('forum/register', ['translator', 'zxcvbn'], function (translator, zxcvbn) {
+	var Register = {};
+	var validationError = false;
+	var successIcon = '';
 
 	Register.init = function () {
+<<<<<<< HEAD
 		var email = $('#email'),
 			username = $('#username'),
 			password = $('#password'),
 			password_confirm = $('#password-confirm'),
 			phone = $('#phone'),
 			register = $('#register');
+=======
+		var email = $('#email');
+		var username = $('#username');
+		var password = $('#password');
+		var password_confirm = $('#password-confirm');
+		var register = $('#register');
+>>>>>>> b6feb0aa57e9abaee35976e425446f81d97c567c
 
 		handleLanguageOverride();
 
@@ -94,7 +100,7 @@ define('forum/register', ['translator'], function (translator) {
 
 				registerBtn.parents('form').ajaxSubmit({
 					headers: {
-						'x-csrf-token': config.csrf_token
+						'x-csrf-token': config.csrf_token,
 					},
 					success: function (data) {
 						registerBtn.removeClass('disabled');
@@ -122,7 +128,7 @@ define('forum/register', ['translator'], function (translator) {
 								registerBtn.removeClass('disabled');
 							}
 						});
-					}
+					},
 				});
 			});
 		});
@@ -138,7 +144,7 @@ define('forum/register', ['translator'], function (translator) {
 		}
 
 		socket.emit('user.emailExists', {
-			email: email
+			email: email,
 		}, function (err, exists) {
 			if (err) {
 				app.alertError(err.message);
@@ -195,7 +201,7 @@ define('forum/register', ['translator'], function (translator) {
 			showError(username_notify, '[[error:invalid-username]]');
 		} else {
 			socket.emit('user.exists', {
-				username: username
+				username: username,
 			}, function (err, exists) {
 				if (err) {
 					return app.alertError(err.message);
@@ -213,8 +219,9 @@ define('forum/register', ['translator'], function (translator) {
 	}
 
 	function validatePassword(password, password_confirm) {
-		var password_notify = $('#password-notify'),
-			password_confirm_notify = $('#password-confirm-notify');
+		var password_notify = $('#password-notify');
+		var password_confirm_notify = $('#password-confirm-notify');
+		var passwordStrength = zxcvbn(password);
 
 		if (password.length < ajaxify.data.minimumPasswordLength) {
 			showError(password_notify, '[[user:change_password_error_length]]');
@@ -226,6 +233,8 @@ define('forum/register', ['translator'], function (translator) {
 			showError(password_notify, '[[user:password_same_as_username]]');
 		} else if (password === $('#email').val()) {
 			showError(password_notify, '[[user:password_same_as_email]]');
+		} else if (passwordStrength.score < ajaxify.data.minimumPasswordStrength) {
+			showError(password_notify, '[[user:weak_password]]');
 		} else {
 			showSuccess(password_notify, successIcon);
 		}
@@ -236,8 +245,8 @@ define('forum/register', ['translator'], function (translator) {
 	}
 
 	function validatePasswordConfirm(password, password_confirm) {
-		var password_notify = $('#password-notify'),
-			password_confirm_notify = $('#password-confirm-notify');
+		var password_notify = $('#password-notify');
+		var password_confirm_notify = $('#password-confirm-notify');
 
 		if (!password || password_notify.hasClass('alert-error')) {
 			return;
@@ -273,8 +282,8 @@ define('forum/register', ['translator'], function (translator) {
 
 	function handleLanguageOverride() {
 		if (!app.user.uid && config.defaultLang !== config.userLang) {
-			var formEl = $('[component="register/local"]'),
-				langEl = $('<input type="hidden" name="userLang" value="' + config.userLang + '" />');
+			var formEl = $('[component="register/local"]');
+			var langEl = $('<input type="hidden" name="userLang" value="' + config.userLang + '" />');
 
 			formEl.append(langEl);
 		}

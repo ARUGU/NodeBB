@@ -1,8 +1,7 @@
 'use strict';
 
-/* globals app, define, utils*/
 
-define('forum/search', ['search', 'autocomplete'], function (searchModule, autocomplete) {
+define('forum/search', ['search', 'autocomplete', 'storage'], function (searchModule, autocomplete, storage) {
 	var	Search = {};
 
 	Search.init = function () {
@@ -36,7 +35,7 @@ define('forum/search', ['search', 'autocomplete'], function (searchModule, autoc
 	function getSearchData() {
 		var form = $('#advanced-search');
 		var searchData = {
-			in: $('#search-in').val()
+			in: $('#search-in').val(),
 		};
 		searchData.term = $('#search-input').val();
 		if (searchData.in === 'posts' || searchData.in === 'titlesposts' || searchData.in === 'titles') {
@@ -105,8 +104,8 @@ define('forum/search', ['search', 'autocomplete'], function (searchModule, autoc
 				$('#post-time-filter').val(formData.timeFilter);
 			}
 
-			if (formData.sortBy) {
-				$('#post-sort-by').val(formData.sortBy);
+			if (formData.sortBy || ajaxify.data.searchDefaultSortBy) {
+				$('#post-sort-by').val(formData.sortBy || ajaxify.data.searchDefaultSortBy);
 				$('#post-sort-direction').val(formData.sortDirection);
 			}
 
@@ -128,7 +127,8 @@ define('forum/search', ['search', 'autocomplete'], function (searchModule, autoc
 		var regex = new RegExp('(' + regexStr + ')', 'gi');
 
 		$('.search-result-text p, .search-result-text h4').each(function () {
-			var result = $(this), nested = [];
+			var result = $(this);
+			var nested = [];
 
 			result.find('*').each(function () {
 				$(this).after('<!-- ' + nested.length + ' -->');
@@ -137,7 +137,7 @@ define('forum/search', ['search', 'autocomplete'], function (searchModule, autoc
 
 			result.html(result.html().replace(regex, '<strong>$1</strong>'));
 
-			for (var i = 0, ii = nested.length; i < ii; i++) {
+			for (var i = 0, ii = nested.length; i < ii; i += 1) {
 				result.html(result.html().replace('<!-- ' + i + ' -->', nested[i].html()));
 			}
 		});
@@ -147,13 +147,13 @@ define('forum/search', ['search', 'autocomplete'], function (searchModule, autoc
 
 	function handleSavePreferences() {
 		$('#save-preferences').on('click', function () {
-			localStorage.setItem('search-preferences', JSON.stringify(getSearchData()));
+			storage.setItem('search-preferences', JSON.stringify(getSearchData()));
 			app.alertSuccess('[[search:search-preferences-saved]]');
 			return false;
 		});
 
 		$('#clear-preferences').on('click', function () {
-			localStorage.removeItem('search-preferences');
+			storage.removeItem('search-preferences');
 			var query = $('#search-input').val();
 			$('#advanced-search')[0].reset();
 			$('#search-input').val(query);
@@ -168,7 +168,7 @@ define('forum/search', ['search', 'autocomplete'], function (searchModule, autoc
 		var tagEl = $('#has-tags');
 		tagEl.tagsinput({
 			confirmKeys: [13, 44],
-			trimValue: true
+			trimValue: true,
 		});
 
 		autocomplete.tag($('#has-tags').siblings('.bootstrap-tagsinput').find('input'));

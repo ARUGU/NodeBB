@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 
 var async = require('async');
@@ -13,7 +13,7 @@ var privileges = require('../privileges');
 var plugins = require('../plugins');
 var helpers = require('./helpers');
 var pagination = require('../pagination');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
 
 var topicsController = {};
 
@@ -39,7 +39,7 @@ topicsController.get = function (req, res, callback) {
 				},
 				topic: function (next) {
 					topics.getTopicData(tid, next);
-				}
+				},
 			}, next);
 		},
 		function (results, next) {
@@ -49,7 +49,7 @@ topicsController.get = function (req, res, callback) {
 
 			userPrivileges = results.privileges;
 
-			if (!userPrivileges.read || !userPrivileges['topics:read'] || (parseInt(results.topic.deleted, 10) && !userPrivileges.view_deleted)) {
+			if (!userPrivileges['topics:read'] || (parseInt(results.topic.deleted, 10) && !userPrivileges.view_deleted)) {
 				return helpers.notAllowed(req, res);
 			}
 
@@ -67,6 +67,7 @@ topicsController.get = function (req, res, callback) {
 			settings = results.settings;
 			var postCount = parseInt(results.topic.postcount, 10);
 			pageCount = Math.max(1, Math.ceil(postCount / settings.postsPerPage));
+			results.topic.postcount = postCount;
 
 			if (utils.isNumber(req.params.post_index) && (req.params.post_index < 1 || req.params.post_index > postCount)) {
 				return helpers.redirect(res, '/topic/' + req.params.topic_id + '/' + req.params.slug + (req.params.post_index > postCount ? '/' + postCount : ''));
@@ -113,7 +114,7 @@ topicsController.get = function (req, res, callback) {
 				currentPage = Math.max(1, Math.ceil(index / settings.postsPerPage));
 			}
 
-			var start = (currentPage - 1) * settings.postsPerPage + postIndex;
+			var start = ((currentPage - 1) * settings.postsPerPage) + postIndex;
 			var stop = start + settings.postsPerPage - 1;
 
 			topics.getTopicWithPosts(results.topic, set, req.uid, start, stop, reverse, next);
@@ -125,18 +126,17 @@ topicsController.get = function (req, res, callback) {
 
 			topics.modifyPostsByPrivilege(topicData, userPrivileges);
 
-			plugins.fireHook('filter:controllers.topic.get', {topicData: topicData, uid: req.uid}, next);
+			plugins.fireHook('filter:controllers.topic.get', { topicData: topicData, uid: req.uid }, next);
 		},
 		function (data, next) {
-
 			var breadcrumbs = [
 				{
 					text: data.topicData.category.name,
-					url: nconf.get('relative_path') + '/category/' + data.topicData.category.slug
+					url: nconf.get('relative_path') + '/category/' + data.topicData.category.slug,
 				},
 				{
-					text: data.topicData.title
-				}
+					text: data.topicData.title,
+				},
 			];
 
 			helpers.buildCategoryBreadcrumbs(data.topicData.category.parentCid, function (err, crumbs) {
@@ -149,7 +149,7 @@ topicsController.get = function (req, res, callback) {
 		},
 		function (topicData, next) {
 			function findPost(index) {
-				for(var i = 0; i < topicData.posts.length; ++i) {
+				for (var i = 0; i < topicData.posts.length; i += 1) {
 					if (parseInt(topicData.posts[i].index, 10) === parseInt(index, 10)) {
 						return topicData.posts[i];
 					}
@@ -187,71 +187,66 @@ topicsController.get = function (req, res, callback) {
 
 			res.locals.metaTags = [
 				{
-					name: "title",
-					content: topicData.titleRaw
+					name: 'title',
+					content: topicData.titleRaw,
 				},
 				{
-					name: "description",
-					content: description
+					name: 'description',
+					content: description,
 				},
 				{
 					property: 'og:title',
-					content: topicData.titleRaw
+					content: topicData.titleRaw,
 				},
 				{
 					property: 'og:description',
-					content: description
+					content: description,
 				},
 				{
-					property: "og:type",
-					content: 'article'
-				},
-				{
-					property: "og:url",
-					content: nconf.get('url') + '/topic/' + topicData.slug + (req.params.post_index ? ('/' + req.params.post_index) : ''),
-					noEscape: true
+					property: 'og:type',
+					content: 'article',
 				},
 				{
 					property: 'og:image',
 					content: ogImageUrl,
-					noEscape: true
+					noEscape: true,
 				},
 				{
-					property: "og:image:url",
+					property: 'og:image:url',
 					content: ogImageUrl,
-					noEscape: true
+					noEscape: true,
 				},
 				{
-					property: "article:published_time",
-					content: utils.toISOString(topicData.timestamp)
+					property: 'article:published_time',
+					content: utils.toISOString(topicData.timestamp),
 				},
 				{
 					property: 'article:modified_time',
-					content: utils.toISOString(topicData.lastposttime)
+					content: utils.toISOString(topicData.lastposttime),
 				},
 				{
 					property: 'article:section',
-					content: topicData.category ? topicData.category.name : ''
-				}
+					content: topicData.category ? topicData.category.name : '',
+				},
 			];
 
 			res.locals.linkTags = [
 				{
 					rel: 'alternate',
 					type: 'application/rss+xml',
-					href: nconf.get('url') + '/topic/' + tid + '.rss'
-				}
+					href: nconf.get('url') + '/topic/' + tid + '.rss',
+				},
 			];
 
 			if (topicData.category) {
 				res.locals.linkTags.push({
 					rel: 'up',
-					href: nconf.get('url') + '/category/' + topicData.category.slug
+					href: nconf.get('url') + '/category/' + topicData.category.slug,
 				});
 			}
 
 			next(null, topicData);
-		}
+		},
 	], function (err, data) {
 		if (err) {
 			return callback(err);
@@ -299,7 +294,7 @@ topicsController.teaser = function (req, res, next) {
 	var tid = req.params.topic_id;
 
 	if (!utils.isNumber(tid)) {
-		return next(new Error('[[error:invalid-tid]]'));
+		return next();
 	}
 
 	async.waterfall([
@@ -316,18 +311,15 @@ topicsController.teaser = function (req, res, next) {
 			if (!pid) {
 				return res.status(404).json('not-found');
 			}
-			posts.getPostSummaryByPids([pid], req.uid, {stripTags: false}, next);
-		}
-	], function (err, posts) {
-		if (err) {
-			return next(err);
-		}
-
-		if (!Array.isArray(posts) || !posts.length) {
-			return res.status(404).json('not-found');
-		}
-		res.json(posts[0]);
-	});
+			posts.getPostSummaryByPids([pid], req.uid, { stripTags: false }, next);
+		},
+		function (posts) {
+			if (!posts.length) {
+				return res.status(404).json('not-found');
+			}
+			res.json(posts[0]);
+		},
+	], next);
 };
 
 topicsController.pagination = function (req, res, callback) {
@@ -341,7 +333,7 @@ topicsController.pagination = function (req, res, callback) {
 	async.parallel({
 		privileges: async.apply(privileges.topics.get, tid, req.uid),
 		settings: async.apply(user.getSettings, req.uid),
-		topic: async.apply(topics.getTopicData, tid)
+		topic: async.apply(topics.getTopicData, tid),
 	}, function (err, results) {
 		if (err || !results.topic) {
 			return callback(err);

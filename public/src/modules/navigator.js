@@ -1,11 +1,6 @@
-
 'use strict';
 
-/* globals define, ajaxify, utils, config */
-
-
 define('navigator', ['forum/pagination', 'components'], function (pagination, components) {
-
 	var navigator = {};
 	var index = 1;
 	var count = 0;
@@ -58,6 +53,7 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 		});
 
 		navigator.setCount(count);
+		navigator.update(0);
 	};
 
 	function generateUrl(index) {
@@ -78,7 +74,8 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 	navigator.disable = function () {
 		count = 0;
 		index = 1;
-		navigator.selector = navigator.callback = null;
+		navigator.callback = null;
+		navigator.selector = null;
 		$(window).off('scroll', navigator.update);
 
 		toggle(false);
@@ -116,7 +113,7 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 		var scrollTop = $(window).scrollTop();
 		var windowHeight = $(window).height();
 		var documentHeight = $(document).height();
-		var middleOfViewport = scrollTop + windowHeight / 2;
+		var middleOfViewport = scrollTop + (windowHeight / 2);
 		var previousDistance = Number.MAX_VALUE;
 		els.each(function () {
 			var distanceToMiddle = Math.abs(middleOfViewport - $(this).offset().top);
@@ -173,19 +170,19 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 
 	navigator.scrollUp = function () {
 		$('body,html').animate({
-			scrollTop: $(window).scrollTop() - $(window).height()
+			scrollTop: $(window).scrollTop() - $(window).height(),
 		});
 	};
 
 	navigator.scrollDown = function () {
 		$('body,html').animate({
-			scrollTop: $(window).scrollTop() + $(window).height()
+			scrollTop: $(window).scrollTop() + $(window).height(),
 		});
 	};
 
 	navigator.scrollTop = function (index) {
 		if ($(navigator.selector + '[data-index="' + index + '"]').length) {
-			navigator.scrollToPost(index, true);
+			navigator.scrollToIndex(index, true);
 		} else {
 			ajaxify.go(generateUrl());
 		}
@@ -195,57 +192,88 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 		if (parseInt(index, 10) < 0) {
 			return;
 		}
+
 		if ($(navigator.selector + '[data-index="' + index + '"]').length) {
-			navigator.scrollToPost(index, true);
+			navigator.scrollToIndex(index, true);
 		} else {
 			index = parseInt(index, 10) + 1;
 			ajaxify.go(generateUrl(index));
 		}
 	};
 
-	navigator.scrollToPost = function (postIndex, highlight, duration) {
-		if (!utils.isNumber(postIndex) || !components.get('topic').length) {
+	navigator.scrollToPost = function (index, highlight, duration) {
+		console.log('[navigator.scrollToPost] deprecated please use, navigator.scrollToIndex');
+		navigator.scrollToIndex(index, highlight, duration);
+	};
+
+	navigator.scrollToIndex = function (index, highlight, duration) {
+		var inTopic = !!components.get('topic').length;
+		var inCategory = !!components.get('category').length;
+
+		if (!utils.isNumber(index) || (!inTopic && !inCategory)) {
 			return;
 		}
 
 		duration = duration !== undefined ? duration : 400;
 		navigator.scrollActive = true;
 
-		if (components.get('post/anchor', postIndex).length) {
-			return navigator.scrollToPostIndex(postIndex, highlight, duration);
+		// if in topic and item already on page
+		if (inTopic && components.get('post/anchor', index).length) {
+			return navigator.scrollToPostIndex(index, highlight, duration);
 		}
 
-		if (config.usePagination) {
-			var index = postIndex;
+		// if in category and item alreay on page
+		if (inCategory && $('[component="category/topic"][data-index="' + index + '"]').length) {
+			return navigator.scrollToTopicIndex(index, highlight, duration);
+		}
+
+		if (!config.usePagination) {
+			navigator.scrollActive = false;
+			index = parseInt(index, 10) + 1;
+			ajaxify.go(generateUrl(index));
+			return;
+		}
+
+		var scrollMethod = inTopic ? navigator.scrollToPostIndex : navigator.scrollToTopicIndex;
+		if (inTopic) {
 			if (config.topicPostSort === 'most_votes' || config.topicPostSort === 'newest_to_oldest') {
 				index = ajaxify.data.postcount - index;
 			}
-			var page = Math.max(1, Math.ceil(index / config.postsPerPage));
-
-			if (parseInt(page, 10) !== ajaxify.data.pagination.currentPage) {
-				pagination.loadPage(page, function () {
-					navigator.scrollToPostIndex(postIndex, highlight, duration);
-				});
-			} else {
-				navigator.scrollToPostIndex(postIndex, highlight, duration);
+		} else if (inCategory) {
+			if (config.categoryTopicSort === 'most_posts' || config.categoryTopicSort === 'oldest_to_newest') {
+				index = ajaxify.data.ajaxify.data.topic_count - index;
 			}
+		}
+
+		var page = Math.max(1, Math.ceil(index / config.postsPerPage));
+
+		if (parseInt(page, 10) !== ajaxify.data.pagination.currentPage) {
+			pagination.loadPage(page, function () {
+				scrollMethod(index, highlight, duration);
+			});
 		} else {
-			navigator.scrollActive = false;
-			postIndex = parseInt(postIndex, 10) + 1;
-			ajaxify.go(generateUrl(postIndex));
+			scrollMethod(index, highlight, duration);
 		}
 	};
 
 	navigator.scrollToPostIndex = function (postIndex, highlight, duration) {
 		var scrollTo = components.get('post', 'index', postIndex);
-		var postHeight = scrollTo.height();
-		var viewportHeight = $(window).height();
-		var navbarHeight = components.get('navbar').height();
+		navigator.scrollToElement(scrollTo, highlight, duration);
+	};
 
+	navigator.scrollToTopicIndex = function (topicIndex, highlight, duration) {
+		var scrollTo = $('[component="category/topic"][data-index="' + topicIndex + '"]');
+		navigator.scrollToElement(scrollTo, highlight, duration);
+	};
+
+	navigator.scrollToElement = function (scrollTo, highlight, duration) {
 		if (!scrollTo.length) {
 			navigator.scrollActive = false;
 			return;
 		}
+		var postHeight = scrollTo.height();
+		var viewportHeight = $(window).height();
+		var navbarHeight = components.get('navbar').height();
 
 		// Temporarily disable navigator update on scroll
 		$(window).off('scroll', navigator.update);
@@ -263,7 +291,7 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 			}
 
 			$('html, body').animate({
-				scrollTop: scrollTop + 'px'
+				scrollTop: scrollTop + 'px',
 			}, duration, function () {
 				if (done) {
 					// Re-enable onScroll behaviour
@@ -290,13 +318,8 @@ define('navigator', ['forum/pagination', 'components'], function (pagination, co
 			}
 		}
 
-		if (components.get('topic').length) {
-			animateScroll();
-		} else {
-			navigator.scrollActive = false;
-		}
+		animateScroll();
 	};
-
 
 	return navigator;
 });

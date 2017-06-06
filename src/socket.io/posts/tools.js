@@ -1,7 +1,6 @@
 'use strict';
 
 var async = require('async');
-var validator = require('validator');
 
 var posts = require('../../posts');
 var topics = require('../../topics');
@@ -13,7 +12,6 @@ var plugins = require('../../plugins');
 var social = require('../../social');
 
 module.exports = function (SocketPosts) {
-
 	SocketPosts.loadPostTools = function (socket, data, callback) {
 		if (!data || !data.pid || !data.cid) {
 			return callback(new Error('[[error:invalid-data]]'));
@@ -37,11 +35,11 @@ module.exports = function (SocketPosts) {
 						posts.hasBookmarked(data.pid, socket.uid, next);
 					},
 					tools: function (next) {
-						plugins.fireHook('filter:post.tools', {pid: data.pid, uid: socket.uid, tools: []}, next);
+						plugins.fireHook('filter:post.tools', { pid: data.pid, uid: socket.uid, tools: [] }, next);
 					},
 					postSharing: function (next) {
 						social.getActivePostSharing(next);
-					}
+					},
 				}, next);
 			},
 			function (results, next) {
@@ -54,7 +52,7 @@ module.exports = function (SocketPosts) {
 				results.posts.display_moderator_tools = results.posts.display_edit_tools || results.posts.display_delete_tools;
 				results.posts.display_move_tools = results.isAdminOrMod;
 				next(null, results);
-			}
+			},
 		], callback);
 	};
 
@@ -85,11 +83,11 @@ module.exports = function (SocketPosts) {
 					type: 'post-delete',
 					uid: socket.uid,
 					pid: data.pid,
-					ip: socket.ip
+					ip: socket.ip,
 				});
 
 				next();
-			}
+			},
 		], callback);
 	};
 
@@ -103,18 +101,17 @@ module.exports = function (SocketPosts) {
 				posts.tools.restore(socket.uid, data.pid, next);
 			},
 			function (postData, next) {
-
 				websockets.in('topic_' + data.tid).emit('event:post_restored', postData);
 
 				events.log({
 					type: 'post-restore',
 					uid: socket.uid,
 					pid: data.pid,
-					ip: socket.ip
+					ip: socket.ip,
 				});
 
 				setImmediate(next);
-			}
+			},
 		], callback);
 	};
 
@@ -123,7 +120,7 @@ module.exports = function (SocketPosts) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
 		async.eachSeries(data.pids, function (pid, next) {
-			SocketPosts.delete(socket, {pid: pid, tid: data.tid}, next);
+			SocketPosts.delete(socket, { pid: pid, tid: data.tid }, next);
 		}, callback);
 	};
 
@@ -132,7 +129,7 @@ module.exports = function (SocketPosts) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
 		async.eachSeries(data.pids, function (pid, next) {
-			SocketPosts.purge(socket, {pid: pid, tid: data.tid}, next);
+			SocketPosts.purge(socket, { pid: pid, tid: data.tid }, next);
 		}, callback);
 	};
 
@@ -141,39 +138,46 @@ module.exports = function (SocketPosts) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
 		var postData;
+		var topicData;
+		var isMainAndLast = false;
 		async.waterfall([
 			function (next) {
 				isMainAndLastPost(data.pid, next);
 			},
 			function (results, next) {
 				if (results.isMain && !results.isLast) {
-					return callback(new Error('[[error:cant-purge-main-post]]'));
+					return next(new Error('[[error:cant-purge-main-post]]'));
 				}
-				if (results.isMain && results.isLast) {
-					return deleteTopicOf(data.pid, socket, next);
-				}
-				setImmediate(next);
+				isMainAndLast = results.isMain && results.isLast;
+
+				posts.getPostFields(data.pid, ['toPid', 'tid'], next);
 			},
-			function (next) {
-				posts.getPostField(data.pid, 'toPid', next);
-			},
-			function (toPid, next) {
-				postData = {pid: data.pid, toPid: toPid};
+			function (_postData, next) {
+				postData = _postData;
+				postData.pid = data.pid;
 				posts.tools.purge(socket.uid, data.pid, next);
 			},
 			function (next) {
 				websockets.in('topic_' + data.tid).emit('event:post_purged', postData);
-				topics.getTopicField(data.tid, 'title', next);
+				topics.getTopicFields(data.tid, ['title', 'cid'], next);
 			},
-			function (title, next) {
+			function (_topicData, next) {
+				topicData = _topicData;
 				events.log({
 					type: 'post-purge',
 					uid: socket.uid,
 					pid: data.pid,
 					ip: socket.ip,
-					title: validator.escape(String(title))
+					title: String(topicData.title),
 				}, next);
-			}
+			},
+			function (next) {
+				if (isMainAndLast) {
+					socketTopics.doTopicAction('purge', 'event:topic_purged', socket, { tids: [postData.tid], cid: topicData.cid }, next);
+				} else {
+					setImmediate(next);
+				}
+			},
 		], callback);
 	};
 
@@ -183,8 +187,8 @@ module.exports = function (SocketPosts) {
 				posts.getTopicFields(pid, ['tid', 'cid'], next);
 			},
 			function (topic, next) {
-				socketTopics.doTopicAction('delete', 'event:topic_deleted', socket, {tids: [topic.tid], cid: topic.cid}, next);
-			}
+				socketTopics.doTopicAction('delete', 'event:topic_deleted', socket, { tids: [topic.tid], cid: topic.cid }, next);
+			},
 		], callback);
 	}
 
@@ -197,8 +201,7 @@ module.exports = function (SocketPosts) {
 				posts.getTopicFields(pid, ['postcount'], function (err, topic) {
 					next(err, topic ? parseInt(topic.postcount, 10) === 1 : false);
 				});
-			}
+			},
 		}, callback);
 	}
-
 };

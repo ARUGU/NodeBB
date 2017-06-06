@@ -3,18 +3,18 @@
 
 var async = require('async');
 var request = require('request');
+var winston = require('winston');
 
 var db = require('../database');
 var meta = require('../meta');
 var emailer = require('../emailer');
 var notifications = require('../notifications');
 var groups = require('../groups');
-var translator = require('../../public/src/modules/translator');
-var utils = require('../../public/src/utils');
+var translator = require('../translator');
+var utils = require('../utils');
 var plugins = require('../plugins');
 
 module.exports = function (User) {
-
 	User.addToApprovalQueue = function (userData, callback) {
 		userData.userslug = utils.slugify(userData.username);
 		async.waterfall([
@@ -29,9 +29,9 @@ module.exports = function (User) {
 					username: userData.username,
 					email: userData.email,
 					ip: userData.ip,
-					hashedPassword: hashedPassword
+					hashedPassword: hashedPassword,
 				};
-				plugins.fireHook('filter:user.addToApprovalQueue', {data: data, userData: userData}, next);
+				plugins.fireHook('filter:user.addToApprovalQueue', { data: data, userData: userData }, next);
 			},
 			function (results, next) {
 				db.setObject('registration:queue:name:' + userData.username, results.data, next);
@@ -41,7 +41,7 @@ module.exports = function (User) {
 			},
 			function (next) {
 				sendNotificationToAdmins(userData.username, next);
-			}
+			},
 		], callback);
 	};
 
@@ -52,12 +52,12 @@ module.exports = function (User) {
 					bodyShort: '[[notifications:new_register, ' + username + ']]',
 					nid: 'new_register:' + username,
 					path: '/admin/manage/registration',
-					mergeId: 'new_register'
+					mergeId: 'new_register',
 				}, next);
 			},
 			function (notification, next) {
 				notifications.pushGroup(notification, 'administrators', next);
-			}
+			},
 		], callback);
 	}
 
@@ -93,7 +93,7 @@ module.exports = function (User) {
 						username: username,
 						subject: subject,
 						template: 'registration_accepted',
-						uid: uid
+						uid: uid,
 					};
 
 					emailer.send('registration_accepted', uid, data, next);
@@ -101,7 +101,7 @@ module.exports = function (User) {
 			},
 			function (next) {
 				next(null, uid);
-			}
+			},
 		], callback);
 	};
 
@@ -115,7 +115,7 @@ module.exports = function (User) {
 				async.each(uids, function (uid, next) {
 					notifications.markRead(nid, uid, next);
 				}, next);
-			}
+			},
 		], callback);
 	}
 
@@ -126,18 +126,31 @@ module.exports = function (User) {
 			},
 			function (next) {
 				markNotificationRead(username, next);
-			}
+			},
 		], callback);
 	};
 
 	function removeFromQueue(username, callback) {
 		async.parallel([
 			async.apply(db.sortedSetRemove, 'registration:queue', username),
-			async.apply(db.delete, 'registration:queue:name:' + username)
+			async.apply(db.delete, 'registration:queue:name:' + username),
 		], function (err) {
 			callback(err);
 		});
 	}
+
+	User.shouldQueueUser = function (ip, callback) {
+		var registrationType = meta.config.registrationType || 'normal';
+		if (registrationType === 'normal' || registrationType === 'invite-only' || registrationType === 'admin-invite-only') {
+			setImmediate(callback, null, false);
+		} else if (registrationType === 'admin-approval') {
+			setImmediate(callback, null, true);
+		} else if (registrationType === 'admin-approval-ip') {
+			db.sortedSetCard('ip:' + ip + ':uid', function (err, count) {
+				callback(err, !!count);
+			});
+		}
+	};
 
 	User.getRegistrationQueue = function (start, stop, callback) {
 		var data;
@@ -153,72 +166,75 @@ module.exports = function (User) {
 				db.getObjects(keys, next);
 			},
 			function (users, next) {
-				users = users.map(function (user, index) {
-					if (user) {
-						user.timestampISO = utils.toISOString(data[index].score);
-						delete user.hashedPassword;
-					}
-
+				users = users.filter(Boolean).map(function (user, index) {
+					user.timestampISO = utils.toISOString(data[index].score);
+					delete user.hashedPassword;
 					return user;
-				}).filter(Boolean);
+				});
 
 				async.map(users, function (user, next) {
-					if (!user) {
-						return next(null, user);
-					}
-
 					// temporary: see http://www.stopforumspam.com/forum/viewtopic.php?id=6392
 					user.ip = user.ip.replace('::ffff:', '');
 
 					async.parallel([
 						function (next) {
-							User.getUidsFromSet('ip:' + user.ip + ':uid', 0, -1, function (err, uids) {
-								if (err) {
-									return next(err);
-								}
-
-								User.getUsersFields(uids, ['uid', 'username', 'picture'], function (err, ipMatch) {
-									user.ipMatch = ipMatch;
-									next(err);
-								});
-							});
+							getIPMatchedUsers(user.ip, next);
 						},
 						function (next) {
-							request({
-								method: 'get',
-								url: 'http://api.stopforumspam.org/api' +
-									'?ip=' + encodeURIComponent(user.ip) +
-									'&email=' + encodeURIComponent(user.email) +
-									'&username=' + encodeURIComponent(user.username) +
-									'&f=json',
-								json: true
-							}, function (err, response, body) {
-								if (err) {
-									return next();
-								}
-								if (response.statusCode === 200 && body) {
-									user.spamData = body;
-									user.usernameSpam = body.username ? (body.username.frequency > 0 || body.username.appears > 0) : true;
-									user.emailSpam = body.email ? (body.email.frequency > 0 || body.email.appears > 0) : true;
-									user.ipSpam = body.ip ? (body.ip.frequency > 0 || body.ip.appears > 0) : true;
-								}
-
-								next();
-							});
-						}
+							getSpamData(user, next);
+						},
 					], function (err) {
 						next(err, user);
 					});
 				}, next);
 			},
 			function (users, next) {
-				plugins.fireHook('filter:user.getRegistrationQueue', {users: users}, next);
+				plugins.fireHook('filter:user.getRegistrationQueue', { users: users }, next);
 			},
 			function (results, next) {
 				next(null, results.users);
-			}
+			},
 		], callback);
 	};
 
+	function getIPMatchedUsers(ip, callback) {
+		async.waterfall([
+			function (next) {
+				User.getUidsFromSet('ip:' + ip + ':uid', 0, -1, next);
+			},
+			function (uids, next) {
+				User.getUsersFields(uids, ['uid', 'username', 'picture'], next);
+			},
+		], callback);
+	}
 
+	function getSpamData(user, callback) {
+		async.waterfall([
+			function (next) {
+				request({
+					method: 'get',
+					url: 'http://api.stopforumspam.org/api' +
+						'?ip=' + encodeURIComponent(user.ip) +
+						'&email=' + encodeURIComponent(user.email) +
+						'&username=' + encodeURIComponent(user.username) +
+						'&f=json',
+					json: true,
+				}, next);
+			},
+			function (response, body, next) {
+				if (response.statusCode === 200 && body) {
+					user.spamData = body;
+					user.usernameSpam = body.username ? (body.username.frequency > 0 || body.username.appears > 0) : true;
+					user.emailSpam = body.email ? (body.email.frequency > 0 || body.email.appears > 0) : true;
+					user.ipSpam = body.ip ? (body.ip.frequency > 0 || body.ip.appears > 0) : true;
+				}
+				next();
+			},
+		], function (err) {
+			if (err) {
+				winston.error(err);
+			}
+			callback();
+		});
+	}
 };

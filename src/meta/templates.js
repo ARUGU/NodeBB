@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 var mkdirp = require('mkdirp');
 var rimraf = require('rimraf');
@@ -9,20 +9,82 @@ var fs = require('fs');
 var nconf = require('nconf');
 
 var plugins = require('../plugins');
-var utils = require('../../public/src/utils');
+var file = require('../file');
 
-var Templates = {};
+var Templates = module.exports;
 
 Templates.compile = function (callback) {
 	callback = callback || function () {};
 
-	compile(callback);
+	var themeConfig = require(nconf.get('theme_config'));
+	var baseTemplatesPaths = themeConfig.baseTheme ? getBaseTemplates(themeConfig.baseTheme) : [nconf.get('base_templates_path')];
+	var viewsPath = nconf.get('views_dir');
+
+	function processImports(paths, relativePath, source, callback) {
+		var regex = /<!-- IMPORT (.+?) -->/;
+
+		var matches = source.match(regex);
+
+		if (!matches) {
+			return callback(null, source);
+		}
+
+		var partial = '/' + matches[1];
+		if (paths[partial] && relativePath !== partial) {
+			fs.readFile(paths[partial], function (err, file) {
+				if (err) {
+					return callback(err);
+				}
+
+				var partialSource = file.toString();
+				source = source.replace(regex, partialSource);
+
+				processImports(paths, relativePath, source, callback);
+			});
+		} else {
+			winston.warn('[meta/templates] Partial not loaded: ' + matches[1]);
+			source = source.replace(regex, '');
+
+			processImports(paths, relativePath, source, callback);
+		}
+	}
+
+	async.waterfall([
+		function (next) {
+			preparePaths(baseTemplatesPaths, next);
+		},
+		function (paths, next) {
+			async.each(Object.keys(paths), function (relativePath, next) {
+				async.waterfall([
+					function (next) {
+						fs.readFile(paths[relativePath], next);
+					},
+					function (file, next) {
+						var source = file.toString();
+						processImports(paths, relativePath, source, next);
+					},
+					function (compiled, next) {
+						mkdirp(path.join(viewsPath, path.dirname(relativePath)), function (err) {
+							next(err, compiled);
+						});
+					},
+					function (compiled, next) {
+						fs.writeFile(path.join(viewsPath, relativePath), compiled, next);
+					},
+				], next);
+			}, next);
+		},
+		function (next) {
+			winston.verbose('[meta/templates] Successfully compiled templates.');
+			next();
+		},
+	], callback);
 };
 
-
 function getBaseTemplates(theme) {
-	var baseTemplatesPaths = [],
-		baseThemePath, baseThemeConfig;
+	var baseTemplatesPaths = [];
+	var baseThemePath;
+	var baseThemeConfig;
 
 	while (theme) {
 		baseThemePath = path.join(nconf.get('themes_path'), theme);
@@ -38,7 +100,7 @@ function getBaseTemplates(theme) {
 function preparePaths(baseTemplatesPaths, callback) {
 	var coreTemplatesPath = nconf.get('core_templates_path');
 	var viewsPath = nconf.get('views_dir');
-
+	var pluginTemplates;
 	async.waterfall([
 		function (next) {
 			rimraf(viewsPath, next);
@@ -51,36 +113,35 @@ function preparePaths(baseTemplatesPaths, callback) {
 		},
 		function (next) {
 			plugins.getTemplates(next);
-		}
-	], function (err, pluginTemplates) {
-		if (err) {
-			return callback(err);
-		}
+		},
+		function (_pluginTemplates, next) {
+			pluginTemplates = _pluginTemplates;
+			winston.verbose('[meta/templates] Compiling templates');
 
-		winston.verbose('[meta/templates] Compiling templates');
+			async.parallel({
+				coreTpls: function (next) {
+					file.walk(coreTemplatesPath, next);
+				},
+				baseThemes: function (next) {
+					async.map(baseTemplatesPaths, function (baseTemplatePath, next) {
+						file.walk(baseTemplatePath, function (err, paths) {
+							paths = paths.map(function (tpl) {
+								return {
+									base: baseTemplatePath,
+									path: tpl.replace(baseTemplatePath, ''),
+								};
+							});
 
-		async.parallel({
-			coreTpls: function (next) {
-				utils.walk(coreTemplatesPath, next);
-			},
-			baseThemes: function (next) {
-				async.map(baseTemplatesPaths, function (baseTemplatePath, next) {
-					utils.walk(baseTemplatePath, function (err, paths) {
-						paths = paths.map(function (tpl) {
-							return {
-								base: baseTemplatePath,
-								path: tpl.replace(baseTemplatePath, '')
-							};
+							next(err, paths);
 						});
-
-						next(err, paths);
-					});
-				}, next);
-			}
-		}, function (err, data) {
-			var baseThemes = data.baseThemes,
-				coreTpls = data.coreTpls,
-				paths = {};
+					}, next);
+				},
+			}, next);
+		},
+		function (data, next) {
+			var baseThemes = data.baseThemes;
+			var coreTpls = data.coreTpls;
+			var paths = {};
 
 			coreTpls.forEach(function (el, i) {
 				paths[coreTpls[i].replace(coreTemplatesPath, '')] = coreTpls[i];
@@ -98,51 +159,7 @@ function preparePaths(baseTemplatesPaths, callback) {
 				}
 			}
 
-			callback(err, paths);
-		});
-	});
+			next(null, paths);
+		},
+	], callback);
 }
-
-function compile(callback) {
-	var themeConfig = require(nconf.get('theme_config')),
-		baseTemplatesPaths = themeConfig.baseTheme ? getBaseTemplates(themeConfig.baseTheme) : [nconf.get('base_templates_path')],
-		viewsPath = nconf.get('views_dir');
-
-
-	preparePaths(baseTemplatesPaths, function (err, paths) {
-		if (err) {
-			return callback(err);
-		}
-
-		async.each(Object.keys(paths), function (relativePath, next) {
-			var file = fs.readFileSync(paths[relativePath]).toString(),
-				matches = null,
-				regex = /[ \t]*<!-- IMPORT ([\s\S]*?)? -->[ \t]*/;
-
-			while((matches = file.match(regex)) !== null) {
-				var partial = "/" + matches[1];
-
-				if (paths[partial] && relativePath !== partial) {
-					file = file.replace(regex, fs.readFileSync(paths[partial]).toString());
-				} else {
-					winston.warn('[meta/templates] Partial not loaded: ' + matches[1]);
-					file = file.replace(regex, "");
-				}
-			}
-
-			mkdirp.sync(path.join(viewsPath, relativePath.split('/').slice(0, -1).join('/')));
-			fs.writeFile(path.join(viewsPath, relativePath), file, next);
-		}, function (err) {
-			if (err) {
-				winston.error('[meta/templates] ' + err.stack);
-				return callback(err);
-			}
-
-			winston.verbose('[meta/templates] Successfully compiled templates.');
-
-			callback();
-		});
-	});
-}
-
-module.exports = Templates;

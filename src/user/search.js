@@ -7,7 +7,6 @@ var plugins = require('../plugins');
 var db = require('../database');
 
 module.exports = function (User) {
-
 	User.search = function (data, callback) {
 		var query = data.query || '';
 		var searchBy = data.searchBy || 'username';
@@ -34,7 +33,7 @@ module.exports = function (User) {
 				filterAndSortUids(uids, data, next);
 			},
 			function (uids, next) {
-				plugins.fireHook('filter:users.search', {uids: uids, uid: uid}, next);
+				plugins.fireHook('filter:users.search', { uids: uids, uid: uid }, next);
 			},
 			function (data, next) {
 				var uids = data.uids;
@@ -54,7 +53,7 @@ module.exports = function (User) {
 				searchResult.timing = (process.elapsedTimeSince(startTime) / 1000).toFixed(2);
 				searchResult.users = userData;
 				next(null, searchResult);
-			}
+			},
 		], callback);
 	};
 
@@ -69,16 +68,17 @@ module.exports = function (User) {
 		var resultsPerPage = parseInt(meta.config.userSearchResultsPerPage, 10) || 20;
 		var hardCap = resultsPerPage * 10;
 
-		db.getSortedSetRangeByLex(searchBy + ':sorted', min, max, 0, hardCap, function (err, data) {
-			if (err) {
-				return callback(err);
-			}
-
-			var uids = data.map(function (data) {
-				return data.split(':')[1];
-			});
-			callback(null, uids);
-		});
+		async.waterfall([
+			function (next) {
+				db.getSortedSetRangeByLex(searchBy + ':sorted', min, max, 0, hardCap, next);
+			},
+			function (data, next) {
+				var uids = data.map(function (data) {
+					return data.split(':')[1];
+				});
+				next(null, uids);
+			},
+		], callback);
 	}
 
 	function filterAndSortUids(uids, data, callback) {
@@ -95,37 +95,38 @@ module.exports = function (User) {
 			fields.push('flags');
 		}
 
-		User.getUsersFields(uids, fields, function (err, userData) {
-			if (err) {
-				return callback(err);
-			}
+		async.waterfall([
+			function (next) {
+				User.getUsersFields(uids, fields, next);
+			},
+			function (userData, next) {
+				if (data.onlineOnly) {
+					userData = userData.filter(function (user) {
+						return user && user.status !== 'offline' && (Date.now() - parseInt(user.lastonline, 10) < 300000);
+					});
+				}
 
-			if (data.onlineOnly) {
-				userData = userData.filter(function (user) {
-					return user && user.status !== 'offline' && (Date.now() - parseInt(user.lastonline, 10) < 300000);
+				if (data.bannedOnly) {
+					userData = userData.filter(function (user) {
+						return user && parseInt(user.banned, 10) === 1;
+					});
+				}
+
+				if (data.flaggedOnly) {
+					userData = userData.filter(function (user) {
+						return user && parseInt(user.flags, 10) > 0;
+					});
+				}
+
+				sortUsers(userData, sortBy);
+
+				uids = userData.map(function (user) {
+					return user && user.uid;
 				});
-			}
 
-			if (data.bannedOnly) {
-				userData = userData.filter(function (user) {
-					return user && user.banned;
-				});
-			}
-
-			if (data.flaggedOnly) {
-				userData = userData.filter(function (user) {
-					return user && parseInt(user.flags, 10) > 0;
-				});
-			}
-
-			sortUsers(userData, sortBy);
-
-			uids = userData.map(function (user) {
-				return user && user.uid;
-			});
-
-			callback(null, uids);
-		});
+				next(null, uids);
+			},
+		], callback);
 	}
 
 	function sortUsers(userData, sortBy) {
@@ -135,9 +136,9 @@ module.exports = function (User) {
 			});
 		} else {
 			userData.sort(function (u1, u2) {
-				if(u1[sortBy] < u2[sortBy]) {
+				if (u1[sortBy] < u2[sortBy]) {
 					return -1;
-				} else if(u1[sortBy] > u2[sortBy]) {
+				} else if (u1[sortBy] > u2[sortBy]) {
 					return 1;
 				}
 				return 0;
@@ -156,9 +157,9 @@ module.exports = function (User) {
 			},
 			function (users, next) {
 				var diff = process.hrtime(start);
-				var timing = (diff[0] * 1e3 + diff[1] / 1e6).toFixed(1);
-				next(null, {timing: timing, users: users});
-			}
+				var timing = ((diff[0] * 1e3) + (diff[1] / 1e6)).toFixed(1);
+				next(null, { timing: timing, users: users });
+			},
 		], callback);
 	}
 };

@@ -33,6 +33,7 @@
     "chat": "Chat",
     "chat_with": "Chat folytatása %1 felhasználóval",
     "new_chat_with": "Új chat indítása %1 felhasználóval",
+    "flag-profile": "Flag Profile",
     "follow": "Követés",
     "unfollow": "Nem követem",
     "more": "Több",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "A kívánt felhasználónév már foglalt, így változtatnunk kellett rajta egy kicsit. Mostantól <strong>%1</strong> név alatt vagy ismert.",
     "password_same_as_username": "A jelszavad megegyezik a felhasználóneveddel, kérlek válassz másik jelszót.",
     "password_same_as_email": "A jelszavad megegyezik az e-mail címeddel, kérlek válassz másik jelszót.",
+    "weak_password": "Weak password.",
     "upload_picture": "Kép feltöltése",
     "upload_a_picture": "Egy kép feltöltése",
     "remove_uploaded_picture": "Feltöltött kép eltávolítása",
     "upload_cover_picture": "Címlap kép feltöltése",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "Beállítások",
     "show_email": "E-mail címem mutatása",
     "show_fullname": "A teljes nevem mutatása",
@@ -126,5 +131,6 @@
     "info.username-history": "Username History",
     "info.email-history": "Email History",
     "info.moderation-note": "Moderation Note",
-    "info.moderation-note.success": "Moderation note saved"
+    "info.moderation-note.success": "Moderation note saved",
+    "info.moderation-note.add": "Add note"
 }

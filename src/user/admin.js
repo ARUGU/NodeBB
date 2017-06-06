@@ -3,12 +3,10 @@
 
 var async = require('async');
 var db = require('../database');
-var posts = require('../posts');
 var plugins = require('../plugins');
 var winston = require('winston');
 
 module.exports = function (User) {
-
 	User.logIP = function (uid, ip) {
 		var now = Date.now();
 		db.sortedSetAdd('uid:' + uid + ':ip', now, ip || 'Unknown');
@@ -18,13 +16,7 @@ module.exports = function (User) {
 	};
 
 	User.getIPs = function (uid, stop, callback) {
-		db.getSortedSetRevRange('uid:' + uid + ':ip', 0, stop, function (err, ips) {
-			if (err) {
-				return callback(err);
-			}
-
-			callback(null, ips);
-		});
+		db.getSortedSetRevRange('uid:' + uid + ':ip', 0, stop, callback);
 	};
 
 	User.getUsersCSV = function (callback) {
@@ -39,7 +31,7 @@ module.exports = function (User) {
 				uids = users.map(function (user) {
 					return user.score;
 				});
-				plugins.fireHook('filter:user.csvFields', {fields: ['uid', 'email', 'username']}, next);
+				plugins.fireHook('filter:user.csvFields', { fields: ['uid', 'email', 'username'] }, next);
 			},
 			function (data, next) {
 				User.getUsersFields(uids, data.fields, next);
@@ -52,17 +44,7 @@ module.exports = function (User) {
 				});
 
 				next(null, csvContent);
-			}
+			},
 		], callback);
-	};
-
-	User.resetFlags = function (uids, callback) {
-		if (!Array.isArray(uids) || !uids.length) {
-			return callback();
-		}
-
-		async.eachSeries(uids, function (uid, next) {
-			posts.dismissUserFlags(uid, next);
-		}, callback);
 	};
 };

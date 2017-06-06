@@ -19,19 +19,27 @@ dashboardController.get = function (req, res, next) {
 			var notices = [
 				{
 					done: !meta.reloadRequired,
-					doneText: 'Restart not required',
-					notDoneText:'Restart required'
+					doneText: '[[admin/general/dashboard:restart-not-required]]',
+					notDoneText: '[[admin/general/dashboard:restart-required]]',
 				},
 				{
 					done: plugins.hasListeners('filter:search.query'),
-					doneText: 'Search Plugin Installed',
-					notDoneText:'Search Plugin not installed',
-					tooltip: 'Install a search plugin from the plugin page in order to activate search functionality',
-					link:'/admin/extend/plugins'
-				}
+					doneText: '[[admin/general/dashboard:search-plugin-installed]]',
+					notDoneText: '[[admin/general/dashboard:search-plugin-not-installed]]',
+					tooltip: '[[admin/general/dashboard:search-plugin-tooltip]]',
+					link: '/admin/extend/plugins',
+				},
 			];
+
+			if (global.env !== 'production') {
+				notices.push({
+					done: false,
+					notDoneText: '[[admin/general/dashboard:running-in-development]]',
+				});
+			}
+
 			plugins.fireHook('filter:admin.notices', notices, next);
-		}
+		},
 	}, function (err, results) {
 		if (err) {
 			return next(err);
@@ -39,7 +47,7 @@ dashboardController.get = function (req, res, next) {
 		res.render('admin/general/dashboard', {
 			version: nconf.get('version'),
 			notices: results.notices,
-			stats: results.stats
+			stats: results.stats,
 		});
 	});
 };
@@ -57,15 +65,15 @@ function getStats(callback) {
 		},
 		function (next) {
 			getStatsForSet('topics:tid', 'topicCount', next);
-		}
+		},
 	], function (err, results) {
 		if (err) {
 			return callback(err);
 		}
-		results[0].name = 'Unique Visitors';
-		results[1].name = 'Users';
-		results[2].name = 'Posts';
-		results[3].name = 'Topics';
+		results[0].name = '[[admin/general/dashboard:unique-visitors]]';
+		results[1].name = '[[admin/general/dashboard:users]]';
+		results[2].name = '[[admin/general/dashboard:posts]]';
+		results[3].name = '[[admin/general/dashboard:topics]]';
 
 		callback(null, results);
 	});
@@ -75,7 +83,7 @@ function getStatsForSet(set, field, callback) {
 	var terms = {
 		day: 86400000,
 		week: 604800000,
-		month: 2592000000
+		month: 2592000000,
 	};
 
 	var now = Date.now();
@@ -91,7 +99,7 @@ function getStatsForSet(set, field, callback) {
 		},
 		alltime: function (next) {
 			getGlobalField(field, next);
-		}
+		},
 	}, callback);
 }
 

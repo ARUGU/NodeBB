@@ -17,8 +17,13 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-"use strict";
-/*global require, global, process*/
+'use strict';
+
+if (require.main !== module) {
+	require.main.require = function (path) {
+		return require(path);
+	};
+}
 
 var nconf = require('nconf');
 nconf.argv().env('__');
@@ -37,11 +42,11 @@ winston.add(winston.transports.Console, {
 	colorize: true,
 	timestamp: function () {
 		var date = new Date();
-		return (!!nconf.get('json-logging')) ? date.toJSON() :	date.getDate() + '/' + (date.getMonth() + 1) + ' ' + date.toTimeString().substr(0,8) + ' [' + global.process.pid + ']';
+		return nconf.get('json-logging') ? date.toJSON() :	date.getDate() + '/' + (date.getMonth() + 1) + ' ' + date.toTimeString().substr(0, 8) + ' [' + global.process.pid + ']';
 	},
 	level: nconf.get('log-level') || (global.env === 'production' ? 'info' : 'verbose'),
 	json: (!!nconf.get('json-logging')),
-	stringify: (!!nconf.get('json-logging'))
+	stringify: (!!nconf.get('json-logging')),
 });
 
 
@@ -75,7 +80,7 @@ if (nconf.get('setup') || nconf.get('install')) {
 } else if (nconf.get('reset')) {
 	async.waterfall([
 		async.apply(require('./src/reset').reset),
-		async.apply(require('./build').buildAll)
+		async.apply(require('./src/meta/build').buildAll),
 	], function (err) {
 		process.exit(err ? 1 : 0);
 	});
@@ -84,7 +89,12 @@ if (nconf.get('setup') || nconf.get('install')) {
 } else if (nconf.get('plugins')) {
 	listPlugins();
 } else if (nconf.get('build')) {
-	require('./build').build(nconf.get('build'));
+	require('./src/meta/build').build(nconf.get('build'));
+} else if (nconf.get('events')) {
+	async.series([
+		async.apply(require('./src/database').init),
+		async.apply(require('./src/events').output),
+	]);
 } else {
 	require('./src/start').start();
 }
@@ -93,14 +103,15 @@ function loadConfig(callback) {
 	winston.verbose('* using configuration stored in: %s', configFile);
 
 	nconf.file({
-		file: configFile
+		file: configFile,
 	});
 
 	nconf.defaults({
 		base_dir: __dirname,
 		themes_path: path.join(__dirname, 'node_modules'),
-		views_dir: path.join(__dirname, 'public/templates'),
-		version: pkg.version
+		upload_path: 'public/uploads',
+		views_dir: path.join(__dirname, 'build/public/templates'),
+		version: pkg.version,
 	});
 
 	if (!nconf.get('isCluster')) {
@@ -113,9 +124,22 @@ function loadConfig(callback) {
 	nconf.set('core_templates_path', path.join(__dirname, 'src/views'));
 	nconf.set('base_templates_path', path.join(nconf.get('themes_path'), 'nodebb-theme-persona/templates'));
 
+	nconf.set('upload_path', path.resolve(nconf.get('base_dir'), nconf.get('upload_path')));
+
 	if (nconf.get('url')) {
 		nconf.set('url_parsed', url.parse(nconf.get('url')));
 	}
+
+	// Explicitly cast 'jobsDisabled' as Bool
+	var castAsBool = ['jobsDisabled'];
+	nconf.stores.env.readOnly = false;
+	castAsBool.forEach(function (prop) {
+		var value = nconf.get(prop);
+		if (value) {
+			nconf.set(prop, typeof value === 'boolean' ? value : String(value).toLowerCase() === 'true');
+		}
+	});
+	nconf.stores.env.readOnly = true;
 
 	if (typeof callback === 'function') {
 		callback();
@@ -126,7 +150,7 @@ function setup() {
 	winston.info('NodeBB Setup Triggered via Command Line');
 
 	var install = require('./src/install');
-	var build = require('./build');
+	var build = require('./src/meta/build');
 
 	process.stdout.write('\nWelcome to NodeBB!\n');
 	process.stdout.write('\nThis looks like a new installation, so you\'ll have to answer a few questions about your environment before we can proceed.\n');
@@ -135,14 +159,14 @@ function setup() {
 	async.series([
 		async.apply(install.setup),
 		async.apply(loadConfig),
-		async.apply(build.buildAll)
+		async.apply(build.buildAll),
 	], function (err, data) {
 		// Disregard build step data
 		data = data[0];
 
 		var separator = '     ';
 		if (process.stdout.columns > 10) {
-			for(var x = 0,cols = process.stdout.columns - 10; x < cols; x++) {
+			for (var x = 0, cols = process.stdout.columns - 10; x < cols; x += 1) {
 				separator += '=';
 			}
 		}
@@ -174,14 +198,19 @@ function upgrade() {
 	var db = require('./src/database');
 	var meta = require('./src/meta');
 	var upgrade = require('./src/upgrade');
-	var build = require('./build');
+	var build = require('./src/meta/build');
+	var tasks = [db.init, meta.configs.init, upgrade.run, build.buildAll];
 
-	async.series([
-		async.apply(db.init),
-		async.apply(meta.configs.init),
-		async.apply(upgrade.upgrade),
-		async.apply(build.buildAll)
-	], function (err) {
+	if (nconf.get('upgrade') !== true) {
+		// Likely an upgrade script name passed in
+		tasks[2] = async.apply(upgrade.runSingle, nconf.get('upgrade'));
+
+		// Skip build
+		tasks.pop();
+	}
+	// disable mongo timeouts during upgrade
+	nconf.set('mongo:options:socketTimeoutMS', 0);
+	async.series(tasks, function (err) {
 		if (err) {
 			winston.error(err.stack);
 			process.exit(1);
@@ -193,22 +222,39 @@ function upgrade() {
 
 function activate() {
 	var db = require('./src/database');
-	db.init(function (err) {
+	var plugins = require('./src/plugins');
+	var events = require('./src/events');
+	var plugin = nconf.get('activate');
+	async.waterfall([
+		function (next) {
+			db.init(next);
+		},
+		function (next) {
+			if (plugin.indexOf('nodebb-') !== 0) {
+				// Allow omission of `nodebb-plugin-`
+				plugin = 'nodebb-plugin-' + plugin;
+			}
+			plugins.isInstalled(plugin, next);
+		},
+		function (isInstalled, next) {
+			if (!isInstalled) {
+				return next(new Error('plugin not installed'));
+			}
+
+			winston.info('Activating plugin `%s`', plugin);
+			db.sortedSetAdd('plugins:active', 0, plugin, next);
+		},
+		function (next) {
+			events.log({
+				type: 'plugin-activate',
+				text: plugin,
+			}, next);
+		},
+	], function (err) {
 		if (err) {
-			winston.error(err.stack);
-			process.exit(1);
+			winston.error(err.message);
 		}
-
-		var plugin = nconf.get('activate');
-		if (plugin.indexOf('nodebb-') !== 0) {
-			// Allow omission of `nodebb-plugin-`
-			plugin = 'nodebb-plugin-' + plugin;
-		}
-
-		winston.info('Activating plugin `%s`', plugin);
-		db.sortedSetAdd('plugins:active', 0, plugin, function (err) {
-			process.exit(err ? 1 : 0);
-		});
+		process.exit(err ? 1 : 0);
 	});
 }
 

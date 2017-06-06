@@ -7,12 +7,11 @@ var nconf = require('nconf');
 var db = require('./../database');
 var meta = require('../meta');
 var emailer = require('../emailer');
-var translator = require('../../public/src/modules/translator');
-var utils = require('../../public/src/utils');
+var translator = require('../translator');
+var utils = require('../utils');
 
 
 module.exports = function (User) {
-
 	User.getInvites = function (uid, callback) {
 		db.getSetMembers('invitation:uid:' + uid, callback);
 	};
@@ -37,11 +36,11 @@ module.exports = function (User) {
 				invitations = invitations.map(function (invites, index) {
 					return {
 						uid: uids[index],
-						invitations: invites
+						invitations: invites,
 					};
 				});
 				next(null, invitations);
-			}
+			},
 		], callback);
 	};
 
@@ -51,7 +50,7 @@ module.exports = function (User) {
 		var token = utils.generateUUID();
 		var registerLink = nconf.get('url') + '/register?token=' + token + '&email=' + encodeURIComponent(email);
 
-		var oneDay = 86400000;
+		var expireIn = (parseInt(meta.config.inviteExpiration, 10) || 1) * 86400000;
 
 		async.waterfall([
 			function (next) {
@@ -61,25 +60,16 @@ module.exports = function (User) {
 				if (exists) {
 					return next(new Error('[[error:email-taken]]'));
 				}
-				next();
+				db.setAdd('invitation:uid:' + uid, email, next);
 			},
 			function (next) {
-				async.parallel([
-					function (next) {
-						db.setAdd('invitation:uid:' + uid, email, next);
-					},
-					function (next) {
-						db.setAdd('invitation:uids', uid, next);
-					}
-				], function (err) {
-					next(err);
-				});
+				db.setAdd('invitation:uids', uid, next);
 			},
 			function (next) {
 				db.set('invitation:email:' + email, token, next);
 			},
 			function (next) {
-				db.pexpireAt('invitation:email:' + email, Date.now() + oneDay, next);
+				db.pexpireAt('invitation:email:' + email, Date.now() + expireIn, next);
 			},
 			function (next) {
 				User.getUserField(uid, 'username', next);
@@ -92,12 +82,12 @@ module.exports = function (User) {
 						registerLink: registerLink,
 						subject: subject,
 						username: username,
-						template: 'invitation'
+						template: 'invitation',
 					};
 
 					emailer.sendToEmail('invitation', email, meta.config.defaultLang, data, next);
 				});
-			}
+			},
 		], callback);
 	};
 
@@ -116,7 +106,7 @@ module.exports = function (User) {
 				}
 
 				next();
-			}
+			},
 		], callback);
 	};
 
@@ -131,22 +121,51 @@ module.exports = function (User) {
 					return next(new Error('[[error:invalid-username]]'));
 				}
 				async.parallel([
-					function deleteFromReferenceList(next) {
-						db.setRemove('invitation:uid:' + invitedByUid, email, next);
+					function (next) {
+						deleteFromReferenceList(invitedByUid, email, next);
 					},
-					function deleteInviteKey(next) {
-						db.delete('invitation:email:' + email, callback);
-					}
+					function (next) {
+						db.delete('invitation:email:' + email, next);
+					},
 				], function (err) {
 					next(err);
 				});
-			}
+			},
 		], callback);
 	};
 
 	User.deleteInvitationKey = function (email, callback) {
 		callback = callback || function () {};
-		db.delete('invitation:email:' + email, callback);
+
+		async.waterfall([
+			function (next) {
+				User.getInvitingUsers(next);
+			},
+			function (uids, next) {
+				async.each(uids, function (uid, next) {
+					deleteFromReferenceList(uid, email, next);
+				}, next);
+			},
+			function (next) {
+				db.delete('invitation:email:' + email, next);
+			},
+		], callback);
 	};
 
+	function deleteFromReferenceList(uid, email, callback) {
+		async.waterfall([
+			function (next) {
+				db.setRemove('invitation:uid:' + uid, email, next);
+			},
+			function (next) {
+				db.setCount('invitation:uid:' + uid, next);
+			},
+			function (count, next) {
+				if (count === 0) {
+					return db.setRemove('invitation:uids', uid, next);
+				}
+				setImmediate(next);
+			},
+		], callback);
+	}
 };

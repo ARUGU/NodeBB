@@ -1,7 +1,7 @@
 'use strict';
 
 var async = require('async');
-var _ = require('underscore');
+var _ = require('lodash');
 
 var db = require('../database');
 var categories = require('../categories');
@@ -10,10 +10,8 @@ var privileges = require('../privileges');
 
 
 module.exports = function (Topics) {
-
 	var topicTools = {};
 	Topics.tools = topicTools;
-
 
 	topicTools.delete = function (tid, uid, callback) {
 		toggleDelete(tid, uid, true, callback);
@@ -46,7 +44,7 @@ module.exports = function (Topics) {
 
 				if (parseInt(topicData.deleted, 10) === 1 && isDelete) {
 					return callback(new Error('[[error:topic-already-deleted]]'));
-				} else if(parseInt(topicData.deleted, 10) !== 1 && !isDelete) {
+				} else if (parseInt(topicData.deleted, 10) !== 1 && !isDelete) {
 					return callback(new Error('[[error:topic-already-restored]]'));
 				}
 
@@ -56,20 +54,20 @@ module.exports = function (Topics) {
 				topicData.deleted = isDelete ? 1 : 0;
 
 				if (isDelete) {
-					plugins.fireHook('action:topic.delete', topicData);
+					plugins.fireHook('action:topic.delete', { topic: topicData, uid: uid });
 				} else {
-					plugins.fireHook('action:topic.restore', topicData);
+					plugins.fireHook('action:topic.restore', { topic: topicData, uid: uid });
 				}
 
 				var data = {
 					tid: tid,
 					cid: topicData.cid,
 					isDelete: isDelete,
-					uid: uid
+					uid: uid,
 				};
 
 				next(null, data);
-			}
+			},
 		], callback);
 	}
 
@@ -98,8 +96,8 @@ module.exports = function (Topics) {
 				Topics.purgePostsAndTopic(tid, uid, next);
 			},
 			function (next) {
-				next(null, {tid: tid, cid: cid, uid: uid});
-			}
+				next(null, { tid: tid, cid: cid, uid: uid });
+			},
 		], callback);
 	};
 
@@ -114,18 +112,18 @@ module.exports = function (Topics) {
 	function toggleLock(tid, uid, lock, callback) {
 		callback = callback || function () {};
 
-		var cid;
+		var topicData;
 
 		async.waterfall([
 			function (next) {
-				Topics.getTopicField(tid, 'cid', next);
+				Topics.getTopicFields(tid, ['tid', 'uid', 'cid'], next);
 			},
-			function (_cid, next) {
-				cid = _cid;
-				if (!cid) {
+			function (_topicData, next) {
+				topicData = _topicData;
+				if (!topicData || !topicData.cid) {
 					return next(new Error('[[error:no-topic]]'));
 				}
-				privileges.categories.isAdminOrMod(cid, uid, next);
+				privileges.categories.isAdminOrMod(topicData.cid, uid, next);
 			},
 			function (isAdminOrMod, next) {
 				if (!isAdminOrMod) {
@@ -135,17 +133,12 @@ module.exports = function (Topics) {
 				Topics.setTopicField(tid, 'locked', lock ? 1 : 0, next);
 			},
 			function (next) {
-				var data = {
-					tid: tid,
-					isLocked: lock,
-					uid: uid,
-					cid: cid
-				};
+				topicData.isLocked = lock;
 
-				plugins.fireHook('action:topic.lock', data);
+				plugins.fireHook('action:topic.lock', { topic: _.clone(topicData), uid: uid });
 
-				next(null, data);
-			}
+				next(null, topicData);
+			},
 		], callback);
 	}
 
@@ -167,7 +160,7 @@ module.exports = function (Topics) {
 				if (!exists) {
 					return callback(new Error('[[error:no-topic]]'));
 				}
-				Topics.getTopicFields(tid, ['cid', 'lastposttime', 'postcount'], next);
+				Topics.getTopicFields(tid, ['uid', 'tid', 'cid', 'lastposttime', 'postcount'], next);
 			},
 			function (_topicData, next) {
 				topicData = _topicData;
@@ -185,30 +178,25 @@ module.exports = function (Topics) {
 							async.parallel([
 								async.apply(db.sortedSetAdd, 'cid:' + topicData.cid + ':tids:pinned', Date.now(), tid),
 								async.apply(db.sortedSetRemove, 'cid:' + topicData.cid + ':tids', tid),
-								async.apply(db.sortedSetRemove, 'cid:' + topicData.cid + ':tids:posts', tid)
+								async.apply(db.sortedSetRemove, 'cid:' + topicData.cid + ':tids:posts', tid),
 							], next);
 						} else {
 							async.parallel([
 								async.apply(db.sortedSetRemove, 'cid:' + topicData.cid + ':tids:pinned', tid),
 								async.apply(db.sortedSetAdd, 'cid:' + topicData.cid + ':tids', topicData.lastposttime, tid),
-								async.apply(db.sortedSetAdd, 'cid:' + topicData.cid + ':tids:posts', topicData.postcount, tid)
+								async.apply(db.sortedSetAdd, 'cid:' + topicData.cid + ':tids:posts', topicData.postcount, tid),
 							], next);
 						}
-					}
+					},
 				], next);
 			},
 			function (results, next) {
-				var data = {
-					tid: tid,
-					isPinned: pin,
-					uid: uid,
-					cid: topicData.cid
-				};
+				topicData.isPinned = pin;
 
-				plugins.fireHook('action:topic.pin', data);
+				plugins.fireHook('action:topic.pin', { topic: _.clone(topicData), uid: uid });
 
-				next(null, data);
-			}
+				next(null, topicData);
+			},
 		], callback);
 	}
 
@@ -222,10 +210,10 @@ module.exports = function (Topics) {
 				Topics.getTopicsFields(tids, ['cid'], next);
 			},
 			function (topicData, next) {
-				var uniqueCids = _.unique(topicData.map(function (topicData) {
+				var uniqueCids = _.uniq(topicData.map(function (topicData) {
 					return topicData && parseInt(topicData.cid, 10);
 				}));
-				
+
 				if (uniqueCids.length > 1 || !uniqueCids.length || !uniqueCids[0]) {
 					return next(new Error('[[error:invalid-data]]'));
 				}
@@ -248,15 +236,16 @@ module.exports = function (Topics) {
 							} else {
 								setImmediate(next);
 							}
-						}
-					], next);					
+						},
+					], next);
 				}, next);
-			}
+			},
 		], callback);
 	};
 
 	topicTools.move = function (tid, cid, uid, callback) {
 		var topic;
+		var oldCid;
 		async.waterfall([
 			function (next) {
 				Topics.exists(tid, next);
@@ -272,7 +261,7 @@ module.exports = function (Topics) {
 				db.sortedSetsRemove([
 					'cid:' + topicData.cid + ':tids',
 					'cid:' + topicData.cid + ':tids:pinned',
-					'cid:' + topicData.cid + ':tids:posts'
+					'cid:' + topicData.cid + ':tids:posts',	// post count
 				], tid, next);
 			},
 			function (next) {
@@ -286,44 +275,42 @@ module.exports = function (Topics) {
 						function (next) {
 							topic.postcount = topic.postcount || 0;
 							db.sortedSetAdd('cid:' + cid + ':tids:posts', topic.postcount, tid, next);
-						}
-					], next);
+						},
+					], function (err) {
+						next(err);
+					});
 				}
-			}
-		], function (err) {
-			if (err) {
-				return callback(err);
-			}
-			var oldCid = topic.cid;
-			categories.moveRecentReplies(tid, oldCid, cid);
+			},
+			function (next) {
+				oldCid = topic.cid;
+				categories.moveRecentReplies(tid, oldCid, cid);
 
-			async.parallel([
-				function (next) {
-					categories.incrementCategoryFieldBy(oldCid, 'topic_count', -1, next);
-				},
-				function (next) {
-					categories.incrementCategoryFieldBy(cid, 'topic_count', 1, next);
-				},
-				function (next) {
-					Topics.setTopicFields(tid, {
-						cid: cid,
-						oldCid: oldCid
-					}, next);
-				}
-			], function (err) {
-				if (err) {
-					return callback(err);
-				}
+				async.parallel([
+					function (next) {
+						categories.incrementCategoryFieldBy(oldCid, 'topic_count', -1, next);
+					},
+					function (next) {
+						categories.incrementCategoryFieldBy(cid, 'topic_count', 1, next);
+					},
+					function (next) {
+						Topics.setTopicFields(tid, {
+							cid: cid,
+							oldCid: oldCid,
+						}, next);
+					},
+				], function (err) {
+					next(err);
+				});
+			},
+			function (next) {
 				plugins.fireHook('action:topic.move', {
 					tid: tid,
 					fromCid: oldCid,
 					toCid: cid,
-					uid: uid
+					uid: uid,
 				});
-				callback();
-			});
-		});
+				next();
+			},
+		], callback);
 	};
-
-
 };

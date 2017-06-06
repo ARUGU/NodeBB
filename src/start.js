@@ -35,40 +35,43 @@ start.start = function () {
 				},
 				function (next) {
 					require('./upgrade').check(next);
-				}
+				},
 			], function (err) {
 				next(err);
 			});
+		},
+		function (next) {
+			db.initSessionStore(next);
 		},
 		function (next) {
 			var webserver = require('./webserver');
 			require('./socket.io').init(webserver.server);
 
 			if (nconf.get('isPrimary') === 'true' && !nconf.get('jobsDisabled')) {
-				require('./notifications').init();
+				require('./notifications').startJobs();
 				require('./user').startJobs();
 			}
 
 			webserver.listen(next);
-		}
+		},
 	], function (err) {
 		if (err) {
-			switch(err.message) {
-				case 'schema-out-of-date':
-					winston.warn('Your NodeBB schema is out-of-date. Please run the following command to bring your dataset up to spec:');
-					winston.warn('    ./nodebb upgrade');
-					break;
-				case 'dependencies-out-of-date':
-					winston.warn('One or more of NodeBB\'s dependent packages are out-of-date. Please run the following command to update them:');
-					winston.warn('    ./nodebb upgrade');
-					break;
-				case 'dependencies-missing':
-					winston.warn('One or more of NodeBB\'s dependent packages are missing. Please run the following command to update them:');
-					winston.warn('    ./nodebb upgrade');
-					break;
-				default:
-					winston.error(err);
-					break;
+			switch (err.message) {
+			case 'schema-out-of-date':
+				winston.error('Your NodeBB schema is out-of-date. Please run the following command to bring your dataset up to spec:');
+				winston.error('    ./nodebb upgrade');
+				break;
+			case 'dependencies-out-of-date':
+				winston.error('One or more of NodeBB\'s dependent packages are out-of-date. Please run the following command to update them:');
+				winston.error('    ./nodebb upgrade');
+				break;
+			case 'dependencies-missing':
+				winston.error('One or more of NodeBB\'s dependent packages are missing. Please run the following command to update them:');
+				winston.error('    ./nodebb upgrade');
+				break;
+			default:
+				winston.error(err);
+				break;
 			}
 
 			// Either way, bad stuff happened. Abort start.
@@ -77,7 +80,7 @@ start.start = function () {
 
 		if (process.send) {
 			process.send({
-				action: 'listening'
+				action: 'listening',
 			});
 		}
 	});
@@ -85,9 +88,6 @@ start.start = function () {
 
 function setupConfigs() {
 	// nconf defaults, if not set in config
-	if (!nconf.get('upload_path')) {
-		nconf.set('upload_path', '/public/uploads');
-	}
 	if (!nconf.get('sessionKey')) {
 		nconf.set('sessionKey', 'express.sid');
 	}
@@ -99,12 +99,11 @@ function setupConfigs() {
 	nconf.set('use_port', !!urlObject.port);
 	nconf.set('relative_path', relativePath);
 	nconf.set('port', urlObject.port || nconf.get('port') || nconf.get('PORT') || (nconf.get('PORT_ENV_VAR') ? nconf.get(nconf.get('PORT_ENV_VAR')) : false) || 4567);
-	nconf.set('upload_url', nconf.get('upload_path').replace(/^\/public/, ''));
+	nconf.set('upload_url', '/assets/uploads');
 }
 
 function printStartupInfo() {
 	if (nconf.get('isPrimary') === 'true') {
-		winston.info('Time: %s', (new Date()).toString());
 		winston.info('Initializing NodeBB v%s', nconf.get('version'));
 
 		var host = nconf.get(nconf.get('database') + ':host');
@@ -126,8 +125,8 @@ function addProcessHandlers() {
 		var meta = require('./meta');
 
 		switch (message.action) {
-			case 'reload':
-				meta.reload();
+		case 'reload':
+			meta.reload();
 			break;
 		}
 	});
@@ -144,7 +143,7 @@ function restart() {
 	if (process.send) {
 		winston.info('[app] Restarting...');
 		process.send({
-			action: 'restart'
+			action: 'restart',
 		});
 	} else {
 		winston.error('[app] Could not restart server. Shutting down.');

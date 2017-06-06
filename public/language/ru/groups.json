@@ -27,6 +27,7 @@
     "details.disableJoinRequests": "Отключить запросы на приглашение",
     "details.grant": "Выдать/забрать привилегии администратора",
     "details.kick": "Исключить",
+    "details.kick_confirm": "Вы уверены, что хотите удалить этого участника из группы?",
     "details.owner_options": "Настройки группы",
     "details.group_name": "Имя группы",
     "details.member_count": "Количество участников",
@@ -52,5 +53,6 @@
     "new-group.group_name": "Название группы:",
     "upload-group-cover": "Загрузить обложку группы",
     "bulk-invite-instructions": "Введите через запятую имена пользователей, которых хотите пригласить в эту группу",
-    "bulk-invite": "Массовое приглашение"
+    "bulk-invite": "Массовое приглашение",
+    "remove_group_cover_confirm": "Вы уверены, что хотите удалить изображение обложки?"
 }

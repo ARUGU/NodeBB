@@ -11,6 +11,9 @@ module.exports = function (User) {
 	User.auth = {};
 
 	User.auth.logAttempt = function (uid, ip, callback) {
+		if (!parseInt(uid, 10)) {
+			return setImmediate(callback);
+		}
 		async.waterfall([
 			function (next) {
 				db.exists('lockout:' + uid, next);
@@ -37,10 +40,10 @@ module.exports = function (User) {
 				events.log({
 					type: 'account-locked',
 					uid: uid,
-					ip: ip
+					ip: ip,
 				});
 				next(new Error('[[error:account-locked]]'));
-			}
+			},
 		], callback);
 	};
 
@@ -51,7 +54,7 @@ module.exports = function (User) {
 	User.auth.resetLockout = function (uid, callback) {
 		async.parallel([
 			async.apply(db.delete, 'loginAttempts:' + uid),
-			async.apply(db.delete, 'lockout:' + uid)
+			async.apply(db.delete, 'lockout:' + uid),
 		], callback);
 	};
 
@@ -65,7 +68,7 @@ module.exports = function (User) {
 		}
 
 		async.waterfall([
-			async.apply(db.getSortedSetRevRange, 'uid:' + uid + ':sessions', 0, -1),
+			async.apply(db.getSortedSetRevRange, 'uid:' + uid + ':sessions', 0, 19),
 			function (sids, next) {
 				_sids = sids;
 				async.map(sids, db.sessionStore.get.bind(db.sessionStore), next);
@@ -78,8 +81,8 @@ module.exports = function (User) {
 				});
 
 				// Revoke any sessions that have expired, return filtered list
-				var expiredSids = [],
-					expired;
+				var expiredSids = [];
+				var expired;
 
 				sessions = sessions.filter(function (sessionObj, idx) {
 					expired = !sessionObj || !sessionObj.hasOwnProperty('passport') ||
@@ -98,7 +101,7 @@ module.exports = function (User) {
 				}, function (err) {
 					next(err, sessions);
 				});
-			}
+			},
 		], function (err, sessions) {
 			callback(err, sessions ? sessions.map(function (sessObj) {
 				sessObj.meta.datetimeISO = new Date(sessObj.meta.datetime).toISOString();
@@ -115,22 +118,28 @@ module.exports = function (User) {
 	User.auth.revokeSession = function (sessionId, uid, callback) {
 		winston.verbose('[user.auth] Revoking session ' + sessionId + ' for user ' + uid);
 
-		db.sessionStore.get(sessionId, function (err, sessionObj) {
-			if (err) {
-				return callback(err);
-			}
-			async.parallel([
-				function (next) {
-					if (sessionObj && sessionObj.meta && sessionObj.meta.uuid) {
-						db.deleteObjectField('uid:' + uid + ':sessionUUID:sessionId', sessionObj.meta.uuid, next);
-					} else {
-						next();
-					}
-				},
-				async.apply(db.sortedSetRemove, 'uid:' + uid + ':sessions', sessionId),
-				async.apply(db.sessionStore.destroy.bind(db.sessionStore), sessionId)
-			], callback);
-		});
+		async.waterfall([
+			function (next) {
+				db.sessionStore.get(sessionId, function (err, sessionObj) {
+					next(err, sessionObj || null);
+				});
+			},
+			function (sessionObj, next) {
+				async.parallel([
+					function (next) {
+						if (sessionObj && sessionObj.meta && sessionObj.meta.uuid) {
+							db.deleteObjectField('uid:' + uid + ':sessionUUID:sessionId', sessionObj.meta.uuid, next);
+						} else {
+							next();
+						}
+					},
+					async.apply(db.sortedSetRemove, 'uid:' + uid + ':sessions', sessionId),
+					async.apply(db.sessionStore.destroy.bind(db.sessionStore), sessionId),
+				], function (err) {
+					next(err);
+				});
+			},
+		], callback);
 	};
 
 	User.auth.revokeAllSessions = function (uid, callback) {
@@ -140,14 +149,13 @@ module.exports = function (User) {
 				async.each(sids, function (sid, next) {
 					User.auth.revokeSession(sid, uid, next);
 				}, next);
-			}
+			},
 		], callback);
 	};
 
 	User.auth.deleteAllSessions = function (callback) {
-		var _ = require('underscore');
+		var _ = require('lodash');
 		batch.processSortedSet('users:joindate', function (uids, next) {
-
 			var sessionKeys = uids.map(function (uid) {
 				return 'uid:' + uid + ':sessions';
 			});
@@ -169,10 +177,10 @@ module.exports = function (User) {
 							async.each(sids, function (sid, next) {
 								db.sessionStore.destroy(sid, next);
 							}, next);
-						}
+						},
 					], next);
-				}
+				},
 			], next);
-		}, {batch: 1000}, callback);
+		}, { batch: 1000 }, callback);
 	};
 };

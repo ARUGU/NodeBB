@@ -1,6 +1,6 @@
 {
-    "chat.chatting_with": "<span id=\"chat-with-name\"></span>とチャット",
-    "chat.placeholder": "ここにメッセージを入力し、Enterで送信",
+    "chat.chatting_with": "<span id=\"chat-with-name\"></span>さんとチャットする",
+    "chat.placeholder": "メッセージを入力し、Enterで送信",
     "chat.send": "送信",
     "chat.no_active": "チャットはありません。",
     "chat.user_typing": "%1 が入力中 ...",
@@ -13,12 +13,14 @@
     "chat.contacts": "お問い合わせ",
     "chat.message-history": "メッセージ履歴",
     "chat.pop-out": "チャットを別ウィンドウで表示する",
+    "chat.minimize": "最小化",
     "chat.maximize": "最大化",
     "chat.seven_days": "7日間",
     "chat.thirty_days": "30日間",
     "chat.three_months": "3ヶ月",
     "chat.delete_message_confirm": "本当にこのメッセージを削除しますか？",
     "chat.add-users-to-room": "部屋にユーザーを追加",
+    "chat.confirm-chat-with-dnd-user": "This user has set their status to DnD(Do not disturb). Do you still want to chat with them?",
     "composer.compose": "構成",
     "composer.show_preview": "プレビュー表示",
     "composer.hide_preview": "プレビュー非表示",
@@ -37,11 +39,11 @@
     "composer.upload-picture": "画像をアップロード",
     "composer.upload-file": "ファイルをアップロード",
     "composer.zen_mode": "Zen モード",
-    "composer.select_category": "カテゴリーを選択",
+    "composer.select_category": "カテゴリを選択",
     "bootbox.ok": "OK",
     "bootbox.cancel": "キャンセル",
     "bootbox.confirm": "確認",
-    "cover.dragging_title": "表紙の配置",
+    "cover.dragging_title": "カバー写真の配置について",
     "cover.dragging_message": "カバー写真をドラッグで目的位置に移動し、\"保存\"をクリックします。",
-    "cover.saved": "カバー写真の画像と配置を保存しました。"
+    "cover.saved": "カバー写真と配置設定を保存しました。"
 }

@@ -2,13 +2,12 @@
 'use strict';
 
 var async = require('async');
-var _ = require('underscore');
+var _ = require('lodash');
 
 var db = require('../database');
 var topics = require('../topics');
 
 module.exports = function (Posts) {
-
 	Posts.getCidByPid = function (pid, callback) {
 		async.waterfall([
 			function (next) {
@@ -16,7 +15,7 @@ module.exports = function (Posts) {
 			},
 			function (tid, next) {
 				topics.getTopicField(tid, 'cid', next);
-			}
+			},
 		], callback);
 	};
 
@@ -49,37 +48,42 @@ module.exports = function (Posts) {
 					return map[post.tid];
 				});
 				next(null, cids);
-			}
+			},
 		], callback);
 	};
 
 	Posts.filterPidsByCid = function (pids, cid, callback) {
 		if (!cid) {
-			return callback(null, pids);
+			return setImmediate(callback, null, pids);
 		}
 
 		if (!Array.isArray(cid) || cid.length === 1) {
-			// Single cid
-			db.isSortedSetMembers('cid:' + parseInt(cid, 10) + ':pids', pids, function (err, isMembers) {
-				if (err) {
-					return callback(err);
-				}
+			return filterPidsBySingleCid(pids, cid, callback);
+		}
+
+		async.waterfall([
+			function (next) {
+				async.map(cid, function (cid, next) {
+					Posts.filterPidsByCid(pids, cid, next);
+				}, next);
+			},
+			function (pidsArr, next) {
+				next(null, _.union.apply(_, pidsArr));
+			},
+		], callback);
+	};
+
+	function filterPidsBySingleCid(pids, cid, callback) {
+		async.waterfall([
+			function (next) {
+				db.isSortedSetMembers('cid:' + parseInt(cid, 10) + ':pids', pids, next);
+			},
+			function (isMembers, next) {
 				pids = pids.filter(function (pid, index) {
 					return pid && isMembers[index];
 				});
-				callback(null, pids);
-			});
-		} else {
-			// Multiple cids
-			async.map(cid, function (cid, next) {
-				Posts.filterPidsByCid(pids, cid, next);
-			}, function (err, pidsArr) {
-				if (err) {
-					return callback(err);
-				}
-
-				callback(null, _.union.apply(_, pidsArr));
-			});
-		}
-	};
+				next(null, pids);
+			},
+		], callback);
+	}
 };

@@ -33,6 +33,7 @@
     "chat": "Chatta",
     "chat_with": "Continue chat with %1",
     "new_chat_with": "Start new chat with %1",
+    "flag-profile": "Flag Profile",
     "follow": "Följ",
     "unfollow": "Sluta följ",
     "more": "Mer",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "Användarnamnet är redan upptaget, så vi förändrade det lite. Du kallas nu för <strong>%1</strong>",
     "password_same_as_username": "Ditt lösenord är samma som ditt användarnamn, välj ett annat lösenord.",
     "password_same_as_email": "Ditt lösenord är detsamma som din e-postadress. Var god välj ett annat lösenord.",
+    "weak_password": "Weak password.",
     "upload_picture": "Ladda upp bild",
     "upload_a_picture": "Ladda upp en bild",
     "remove_uploaded_picture": "Ta bort uppladdad bild",
     "upload_cover_picture": "Ladda upp omslagsbild",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "Inställningar",
     "show_email": "Visa min e-postadress",
     "show_fullname": "Visa fullständigt namn",
@@ -126,5 +131,6 @@
     "info.username-history": "Användarnamn historik",
     "info.email-history": "Epost historik",
     "info.moderation-note": "Moderations anteckning",
-    "info.moderation-note.success": "Moderations anteckning sparad"
+    "info.moderation-note.success": "Moderations anteckning sparad",
+    "info.moderation-note.add": "Add note"
 }

@@ -107,6 +107,18 @@
 	}
 
 	&.avatar-lg {
+		width: 64px;
+		height: 64px;
+		.user-icon-style(64px, 4rem);
+	}
+
+	&.avatar-xl {
+		width: 128px;
+		height: 128px;
+		.user-icon-style(128px, 7.5rem);
+	}
+	
+	&.avatar-xl {
 		width: 128px;
 		height: 128px;
 		.user-icon-style(128px, 7.5rem);
@@ -129,4 +141,14 @@
 
 .admin .ban-modal .units {
 	line-height: 1.846;
+}
+
+#crop-picture-modal {
+	#cropped-image {
+		max-width: 100%;
+	}
+	
+	.cropper-container.cropper-bg {
+		max-width: 100%;
+	}
 }

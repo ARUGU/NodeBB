@@ -5,15 +5,13 @@ var async = require('async');
 var validator = require('validator');
 var S = require('string');
 
-var db = require('../database');
+var topics = require('../topics');
 var user = require('../user');
 var plugins = require('../plugins');
 var categories = require('../categories');
-var utils = require('../../public/src/utils');
-
+var utils = require('../utils');
 
 module.exports = function (Posts) {
-
 	Posts.getPostSummaryByPids = function (pids, uid, options, callback) {
 		if (!Array.isArray(pids) || !pids.length) {
 			return callback(null, []);
@@ -40,8 +38,8 @@ module.exports = function (Posts) {
 					if (uids.indexOf(posts[i].uid) === -1) {
 						uids.push(posts[i].uid);
 					}
-					if (topicKeys.indexOf('topic:' + posts[i].tid) === -1) {
-						topicKeys.push('topic:' + posts[i].tid);
+					if (topicKeys.indexOf(posts[i].tid) === -1) {
+						topicKeys.push(posts[i].tid);
 					}
 				});
 				async.parallel({
@@ -50,7 +48,7 @@ module.exports = function (Posts) {
 					},
 					topicsAndCategories: function (next) {
 						getTopicAndCategories(topicKeys, next);
-					}
+					},
 				}, next);
 			},
 			function (results, next) {
@@ -81,62 +79,63 @@ module.exports = function (Posts) {
 				parsePosts(posts, options, next);
 			},
 			function (posts, next) {
-				plugins.fireHook('filter:post.getPostSummaryByPids', {posts: posts, uid: uid}, next);
+				plugins.fireHook('filter:post.getPostSummaryByPids', { posts: posts, uid: uid }, next);
 			},
 			function (data, next) {
 				next(null, data.posts);
-			}
+			},
 		], callback);
 	};
 
 	function parsePosts(posts, options, callback) {
 		async.map(posts, function (post, next) {
-			if (!post.content || !options.parse) {
-				if (options.stripTags) {
-					post.content = stripTags(post.content);
-				}
-				post.content = post.content ? validator.escape(String(post.content)) : post.content;
-				return next(null, post);
-			}
-
-			Posts.parsePost(post, function (err, post) {
-				if (err) {
-					return next(err);
-				}
-				if (options.stripTags) {
-					post.content = stripTags(post.content);
-				}
-
-				next(null, post);
-			});
+			async.waterfall([
+				function (next) {
+					if (!post.content || !options.parse) {
+						post.content = post.content ? validator.escape(String(post.content)) : post.content;
+						return next(null, post);
+					}
+					Posts.parsePost(post, next);
+				},
+				function (post, next) {
+					if (options.stripTags) {
+						post.content = stripTags(post.content);
+					}
+					next(null, post);
+				},
+			], next);
 		}, callback);
 	}
 
-	function getTopicAndCategories(topicKeys, callback) {
-		db.getObjectsFields(topicKeys, ['uid', 'tid', 'title', 'cid', 'slug', 'deleted', 'postcount', 'mainPid'], function (err, topics) {
-			if (err) {
-				return callback(err);
-			}
+	function getTopicAndCategories(tids, callback) {
+		var topicsData;
+		async.waterfall([
+			function (next) {
+				topics.getTopicsFields(tids, ['uid', 'tid', 'title', 'cid', 'slug', 'deleted', 'postcount', 'mainPid'], next);
+			},
+			function (_topicsData, next) {
+				topicsData = _topicsData;
+				var cids = topicsData.map(function (topic) {
+					if (topic) {
+						topic.title = String(topic.title);
+						topic.deleted = parseInt(topic.deleted, 10) === 1;
+					}
+					return topic && topic.cid;
+				}).filter(function (topic, index, array) {
+					return topic && array.indexOf(topic) === index;
+				});
 
-			var cids = topics.map(function (topic) {
-				if (topic) {
-					topic.title = validator.escape(String(topic.title));
-					topic.deleted = parseInt(topic.deleted, 10) === 1;
-				}
-				return topic && topic.cid;
-			}).filter(function (topic, index, array) {
-				return topic && array.indexOf(topic) === index;
-			});
-
-			categories.getCategoriesFields(cids, ['cid', 'name', 'icon', 'slug', 'parentCid', 'bgColor', 'color'], function (err, categories) {
-				callback(err, {topics: topics, categories: categories});
-			});
-		});
+				categories.getCategoriesFields(cids, ['cid', 'name', 'icon', 'slug', 'parentCid', 'bgColor', 'color'], next);
+			},
+			function (categoriesData, next) {
+				next(null, { topics: topicsData, categories: categoriesData });
+			},
+		], callback);
 	}
 
 	function toObject(key, data) {
 		var obj = {};
-		for(var i = 0; i < data.length; ++i) {
+		for (var i = 0; i < data.length; i += 1) {
 			obj[data[i][key]] = data[i];
 		}
 		return obj;

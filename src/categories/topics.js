@@ -7,7 +7,6 @@ var topics = require('../topics');
 var plugins = require('../plugins');
 
 module.exports = function (Categories) {
-
 	Categories.getCategoryTopics = function (data, callback) {
 		async.waterfall([
 			function (next) {
@@ -20,24 +19,24 @@ module.exports = function (Categories) {
 				topics.getTopicsByTids(tids, data.uid, next);
 			},
 			function (topics, next) {
-				if (!Array.isArray(topics) || !topics.length) {
-					return next(null, {topics: [], uid: data.uid});
+				if (!topics.length) {
+					return next(null, { topics: [], uid: data.uid });
 				}
 
-				for (var i = 0; i < topics.length; ++i) {
+				for (var i = 0; i < topics.length; i += 1) {
 					topics[i].index = data.start + i;
 				}
 
-				plugins.fireHook('filter:category.topics.get', {topics: topics, uid: data.uid}, next);
+				plugins.fireHook('filter:category.topics.get', { cid: data.cid, topics: topics, uid: data.uid }, next);
 			},
 			function (results, next) {
-				next(null, {topics: results.topics, nextStart: data.stop + 1});
-			}
+				next(null, { topics: results.topics, nextStart: data.stop + 1 });
+			},
 		], callback);
 	};
 
 	Categories.getTopicIds = function (cid, set, reverse, start, stop, callback) {
-	 	var pinnedTids;
+		var pinnedTids;
 		var pinnedCount;
 		var totalPinnedCount;
 
@@ -65,7 +64,7 @@ module.exports = function (Categories) {
 				stop = stop === -1 ? stop : start + normalTidsToGet - 1;
 
 				if (Array.isArray(set)) {
-					db[reverse ? 'getSortedSetRevIntersect' : 'getSortedSetIntersect']({sets: set, start: start, stop: stop}, next);
+					db[reverse ? 'getSortedSetRevIntersect' : 'getSortedSetIntersect']({ sets: set, start: start, stop: stop }, next);
 				} else {
 					db[reverse ? 'getSortedSetRevRange' : 'getSortedSetRange'](set, start, stop, next);
 				}
@@ -76,7 +75,7 @@ module.exports = function (Categories) {
 				});
 
 				next(null, pinnedTids.concat(normalTids));
-			}
+			},
 		], callback);
 	};
 
@@ -125,22 +124,21 @@ module.exports = function (Categories) {
 				if (parseInt(pinned, 10) === 1) {
 					return setImmediate(next);
 				}
-				 
+
 				async.parallel([
 					function (next) {
 						db.sortedSetAdd('cid:' + cid + ':tids', postData.timestamp, postData.tid, next);
 					},
 					function (next) {
 						db.sortedSetIncrBy('cid:' + cid + ':tids:posts', 1, postData.tid, next);
-					}
+					},
 				], function (err) {
 					next(err);
-				});					
+				});
 			},
 			function (next) {
 				Categories.updateRecentTid(cid, postData.tid, next);
-			}			
+			},
 		], callback);
 	};
-
 };

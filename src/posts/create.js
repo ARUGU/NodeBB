@@ -1,7 +1,7 @@
 'use strict';
 
 var async = require('async');
-var _ = require('underscore');
+var _ = require('lodash');
 
 var meta = require('../meta');
 var db = require('../database');
@@ -9,16 +9,17 @@ var plugins = require('../plugins');
 var user = require('../user');
 var topics = require('../topics');
 var categories = require('../categories');
-var utils = require('../../public/src/utils');
+var groups = require('../groups');
+var utils = require('../utils');
 
 module.exports = function (Posts) {
-
 	Posts.create = function (data, callback) {
 		// This is an internal method, consider using Topics.reply instead
 		var uid = data.uid;
 		var tid = data.tid;
 		var content = data.content.toString();
 		var timestamp = data.timestamp || Date.now();
+		var isMain = data.isMain || false;
 
 		if (!uid && parseInt(uid, 10) !== 0) {
 			return callback(new Error('[[error:invalid-uid]]'));
@@ -35,14 +36,13 @@ module.exports = function (Posts) {
 				db.incrObjectField('global', 'nextPid', next);
 			},
 			function (pid, next) {
-
 				postData = {
-					'pid': pid,
-					'uid': uid,
-					'tid': tid,
-					'content': content,
-					'timestamp': timestamp,
-					'deleted': 0
+					pid: pid,
+					uid: uid,
+					tid: tid,
+					content: content,
+					timestamp: timestamp,
+					deleted: 0,
 				};
 
 				if (data.toPid) {
@@ -60,7 +60,7 @@ module.exports = function (Posts) {
 				plugins.fireHook('filter:post.save', postData, next);
 			},
 			function (postData, next) {
-				plugins.fireHook('filter:post.create', {post: postData, data: data}, next);
+				plugins.fireHook('filter:post.create', { post: postData, data: data }, next);
 			},
 			function (data, next) {
 				postData = data.post;
@@ -84,6 +84,9 @@ module.exports = function (Posts) {
 						});
 					},
 					function (next) {
+						groups.onNewPostMade(postData, next);
+					},
+					function (next) {
 						db.sortedSetAdd('posts:pid', timestamp, postData.pid, next);
 					},
 					function (next) {
@@ -92,25 +95,25 @@ module.exports = function (Posts) {
 						}
 						async.parallel([
 							async.apply(db.sortedSetAdd, 'pid:' + postData.toPid + ':replies', timestamp, postData.pid),
-							async.apply(db.incrObjectField, 'post:' + postData.toPid, 'replies')
+							async.apply(db.incrObjectField, 'post:' + postData.toPid, 'replies'),
 						], next);
 					},
 					function (next) {
 						db.incrObjectField('global', 'postCount', next);
-					}
+					},
 				], function (err) {
-					if (err) {
-						return next(err);
-					}
-					plugins.fireHook('filter:post.get', postData, next);
+					next(err);
 				});
 			},
-			function (postData, next) {
-				plugins.fireHook('action:post.save', _.clone(postData));
-				next(null, postData);
-			}
+			function (next) {
+				plugins.fireHook('filter:post.get', { post: postData, uid: data.uid }, next);
+			},
+			function (data, next) {
+				data.post.isMain = isMain;
+				plugins.fireHook('action:post.save', { post: _.clone(data.post) });
+				next(null, data.post);
+			},
 		], callback);
 	};
 };
-
 

@@ -2,7 +2,7 @@
 
 var async = require('async');
 var db = require('../database');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
 var validator = require('validator');
 var plugins = require('../plugins');
 var groups = require('../groups');
@@ -12,14 +12,17 @@ var http = require('http');
 var rocketChat = {};
 
 module.exports = function (User) {
-
 	User.create = function (data, callback) {
 		data.username = data.username.trim();
 		data.userslug = utils.slugify(data.username);
 		if (data.email !== undefined) {
 			data.email = validator.escape(String(data.email).trim());
 		}
+		var timestamp = data.timestamp || Date.now();
+		var userData;
+		var userNameChanged = false;
 
+<<<<<<< HEAD
 		User.isDataValid(data, function (err) {
 			if (err)  {
 				return callback(err);
@@ -63,21 +66,64 @@ module.exports = function (User) {
 				}
 
 				var userNameChanged = !!results.renamedUsername;
+=======
+		async.waterfall([
+			function (next) {
+				User.isDataValid(data, next);
+			},
+			function (next) {
+				userData = {
+					username: data.username,
+					userslug: data.userslug,
+					email: data.email || '',
+					joindate: timestamp,
+					lastonline: timestamp,
+					picture: data.picture || '',
+					fullname: data.fullname || '',
+					location: data.location || '',
+					birthday: data.birthday || '',
+					website: '',
+					signature: '',
+					uploadedpicture: '',
+					profileviews: 0,
+					reputation: 0,
+					postcount: 0,
+					topiccount: 0,
+					lastposttime: 0,
+					banned: 0,
+					status: 'online',
+				};
+
+				User.uniqueUsername(userData, next);
+			},
+			function (renamedUsername, next) {
+				userNameChanged = !!renamedUsername;
+>>>>>>> b6feb0aa57e9abaee35976e425446f81d97c567c
 
 				if (userNameChanged) {
-					userData.username = results.renamedUsername;
-					userData.userslug = utils.slugify(results.renamedUsername);
+					userData.username = renamedUsername;
+					userData.userslug = utils.slugify(renamedUsername);
 				}
-
-				async.waterfall([
+				plugins.fireHook('filter:user.create', { user: userData, data: data }, next);
+			},
+			function (results, next) {
+				userData = results.user;
+				db.incrObjectField('global', 'nextUid', next);
+			},
+			function (uid, next) {
+				userData.uid = uid;
+				db.setObject('user:' + uid, userData, next);
+			},
+			function (next) {
+				async.parallel([
 					function (next) {
-						db.incrObjectField('global', 'nextUid', next);
-					},
-					function (uid, next) {
-						userData.uid = uid;
-						db.setObject('user:' + uid, userData, next);
+						db.incrObjectField('global', 'userCount', next);
 					},
 					function (next) {
+						db.sortedSetAdd('username:uid', userData.uid, userData.username, next);
+					},
+					function (next) {
+<<<<<<< HEAD
 						async.parallel([
 							function (next) {
 								db.incrObjectField('global', 'userCount', next);
@@ -159,23 +205,74 @@ module.exports = function (User) {
 										async.apply(User.setUserField, userData.uid, 'password', hash),
 										async.apply(User.reset.updateExpiry, userData.uid)
 									], next);
-								});
-							},
-							function (next) {
-								User.updateDigestSetting(userData.uid, meta.config.dailyDigestFreq, next);
-							}
-						], next);
+=======
+						db.sortedSetAdd('username:sorted', 0, userData.username.toLowerCase() + ':' + userData.uid, next);
 					},
-					function (results, next) {
-						if (userNameChanged) {
-							User.notifications.sendNameChangeNotification(userData.uid, userData.username);
+					function (next) {
+						db.sortedSetAdd('userslug:uid', userData.uid, userData.userslug, next);
+					},
+					function (next) {
+						var sets = ['users:joindate', 'users:online'];
+						if (parseInt(userData.uid, 10) !== 1) {
+							sets.push('users:notvalidated');
 						}
-						plugins.fireHook('action:user.create', userData);
-						next(null, userData.uid);
-					}
-				], callback);
-			});
-		});
+						db.sortedSetsAdd(sets, timestamp, userData.uid, next);
+					},
+					function (next) {
+						db.sortedSetsAdd(['users:postcount', 'users:reputation'], 0, userData.uid, next);
+					},
+					function (next) {
+						groups.join('registered-users', userData.uid, next);
+					},
+					function (next) {
+						User.notifications.sendWelcomeNotification(userData.uid, next);
+					},
+					function (next) {
+						if (userData.email) {
+							async.parallel([
+								async.apply(db.sortedSetAdd, 'email:uid', userData.uid, userData.email.toLowerCase()),
+								async.apply(db.sortedSetAdd, 'email:sorted', 0, userData.email.toLowerCase() + ':' + userData.uid),
+							], next);
+
+							if (parseInt(userData.uid, 10) !== 1 && parseInt(meta.config.requireEmailConfirmation, 10) === 1) {
+								User.email.sendValidationEmail(userData.uid, {
+									email: userData.email,
+>>>>>>> b6feb0aa57e9abaee35976e425446f81d97c567c
+								});
+							}
+						} else {
+							next();
+						}
+					},
+					function (next) {
+						if (!data.password) {
+							return next();
+						}
+
+						User.hashPassword(data.password, function (err, hash) {
+							if (err) {
+								return next(err);
+							}
+
+							async.parallel([
+								async.apply(User.setUserField, userData.uid, 'password', hash),
+								async.apply(User.reset.updateExpiry, userData.uid),
+							], next);
+						});
+					},
+					function (next) {
+						User.updateDigestSetting(userData.uid, meta.config.dailyDigestFreq, next);
+					},
+				], next);
+			},
+			function (results, next) {
+				if (userNameChanged) {
+					User.notifications.sendNameChangeNotification(userData.uid, userData.username);
+				}
+				plugins.fireHook('action:user.create', { user: userData });
+				next(null, userData.uid);
+			},
+		], callback);
 	};
 
 	User.isDataValid = function (userData, callback) {
@@ -208,7 +305,7 @@ module.exports = function (User) {
 				} else {
 					next();
 				}
-			}
+			},
 		}, function (err) {
 			callback(err);
 		});
@@ -230,31 +327,25 @@ module.exports = function (User) {
 		callback();
 	};
 
-	function renameUsername(userData, callback) {
-		meta.userOrGroupExists(userData.userslug, function (err, exists) {
-			if (err || !exists) {
-				return callback(err);
-			}
-
-			var	newUsername = '';
-			async.forever(function (next) {
-				newUsername = userData.username + (Math.floor(Math.random() * 255) + 1);
-				User.existsBySlug(newUsername, function (err, exists) {
-					if (err) {
-						return callback(err);
-					}
+	User.uniqueUsername = function (userData, callback) {
+		var numTries = 0;
+		function go(username) {
+			async.waterfall([
+				function (next) {
+					meta.userOrGroupExists(username, next);
+				},
+				function (exists) {
 					if (!exists) {
-						next(newUsername);
-					} else {
-						next();
+						return callback(null, numTries ? username : null);
 					}
-				});
-			}, function (username) {
-				callback(null, username);
-			});
-		});
-	}
+					username = userData.username + ' ' + numTries.toString(32);
+					numTries += 1;
+					go(username);
+				},
+			], callback);
+		}
 
+<<<<<<< HEAD
 	// The following methods are used to create a rocket chat user account with the details given while registering to nodebb account
 	rocketChat.login = function(user, password, callback) {
 		var userInfo = {};
@@ -422,4 +513,8 @@ module.exports = function (User) {
   		});
   	}
 
+=======
+		go(userData.userslug);
+	};
+>>>>>>> b6feb0aa57e9abaee35976e425446f81d97c567c
 };

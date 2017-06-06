@@ -27,6 +27,7 @@
     "details.disableJoinRequests": "Zakázat žádosti o připojení",
     "details.grant": "Přidat/Zrušit vlastnictví",
     "details.kick": "Vyhodit",
+    "details.kick_confirm": "Are you sure you want to remove this member from the group?",
     "details.owner_options": "Administrátor skupiny",
     "details.group_name": "Název skupiny",
     "details.member_count": "Počet členů",
@@ -52,5 +53,6 @@
     "new-group.group_name": "Název skupiny:",
     "upload-group-cover": "Nahrát titulní obrázek skupiny",
     "bulk-invite-instructions": "Enter a list of comma separated usernames to invite to this group",
-    "bulk-invite": "Bulk Invite"
+    "bulk-invite": "Bulk Invite",
+    "remove_group_cover_confirm": "Are you sure you want to remove the cover picture?"
 }

@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 var async = require('async');
 var validator = require('validator');
@@ -10,47 +10,49 @@ var events = require('../../events');
 var meta = require('../../meta');
 var plugins = require('../../plugins');
 
-var User = {};
+var User = module.exports;
 
 User.makeAdmins = function (socket, uids, callback) {
-	if(!Array.isArray(uids)) {
+	if (!Array.isArray(uids)) {
 		return callback(new Error('[[error:invalid-data]]'));
 	}
 
-	user.getUsersFields(uids, ['banned'], function (err, userData) {
-		if (err) {
-			return callback(err);
-		}
-
-		for(var i = 0; i < userData.length; i++) {
-			if (userData[i] && parseInt(userData[i].banned, 10) === 1) {
-				return callback(new Error('[[error:cant-make-banned-users-admin]]'));
+	async.waterfall([
+		function (next) {
+			user.getUsersFields(uids, ['banned'], next);
+		},
+		function (userData, next) {
+			for (var i = 0; i < userData.length; i += 1) {
+				if (userData[i] && parseInt(userData[i].banned, 10) === 1) {
+					return callback(new Error('[[error:cant-make-banned-users-admin]]'));
+				}
 			}
-		}
 
-		async.each(uids, function (uid, next) {
-			groups.join('administrators', uid, next);
-		}, callback);
-	});
+			async.each(uids, function (uid, next) {
+				groups.join('administrators', uid, next);
+			}, next);
+		},
+	], callback);
 };
 
 User.removeAdmins = function (socket, uids, callback) {
-	if(!Array.isArray(uids)) {
+	if (!Array.isArray(uids)) {
 		return callback(new Error('[[error:invalid-data]]'));
 	}
 
 	async.eachSeries(uids, function (uid, next) {
-		groups.getMemberCount('administrators', function (err, count) {
-			if (err) {
-				return next(err);
-			}
+		async.waterfall([
+			function (next) {
+				groups.getMemberCount('administrators', next);
+			},
+			function (count, next) {
+				if (count === 1) {
+					return next(new Error('[[error:cant-remove-last-admin]]'));
+				}
 
-			if (count === 1) {
-				return next(new Error('[[error:cant-remove-last-admin]]'));
-			}
-
-			groups.leave('administrators', uid, next);
-		});
+				groups.leave('administrators', uid, next);
+			},
+		], next);
 	}, callback);
 };
 
@@ -69,14 +71,6 @@ User.resetLockouts = function (socket, uids, callback) {
 	async.each(uids, user.auth.resetLockout, callback);
 };
 
-User.resetFlags = function (socket, uids, callback) {
-	if (!Array.isArray(uids)) {
-		return callback(new Error('[[error:invalid-data]]'));
-	}
-
-	user.resetFlags(uids, callback);
-};
-
 User.validateEmail = function (socket, uids, callback) {
 	if (!Array.isArray(uids)) {
 		return callback(new Error('[[error:invalid-data]]'));
@@ -86,14 +80,16 @@ User.validateEmail = function (socket, uids, callback) {
 		return parseInt(uid, 10);
 	});
 
-	async.each(uids, function (uid, next) {
-		user.setUserField(uid, 'email:confirmed', 1, next);
-	}, function (err) {
-		if (err) {
-			return callback(err);
-		}
-		db.sortedSetRemove('users:notvalidated', uids, callback);
-	});
+	async.waterfall([
+		function (next) {
+			async.each(uids, function (uid, next) {
+				user.setUserField(uid, 'email:confirmed', 1, next);
+			}, next);
+		},
+		function (next) {
+			db.sortedSetRemove('users:notvalidated', uids, next);
+		},
+	], callback);
 };
 
 User.sendValidationEmail = function (socket, uids, callback) {
@@ -105,20 +101,9 @@ User.sendValidationEmail = function (socket, uids, callback) {
 		return callback(new Error('[[error:email-confirmations-are-disabled]]'));
 	}
 
-	async.waterfall([
-		function (next) {
-			user.getUsersFields(uids, ['uid', 'email'], next);
-		},
-		function (usersData, next) {
-			async.eachLimit(usersData, 50, function (userData, next) {
-				if (userData.email && userData.uid) {
-					user.email.sendValidationEmail(userData.uid, userData.email, next);
-				} else {
-					next();
-				}
-			}, next);
-		}
-	], callback);
+	async.eachLimit(uids, 50, function (uid, next) {
+		user.email.sendValidationEmail(uid, next);
+	}, callback);
 };
 
 User.sendPasswordResetEmail = function (socket, uids, callback) {
@@ -131,15 +116,17 @@ User.sendPasswordResetEmail = function (socket, uids, callback) {
 	});
 
 	async.each(uids, function (uid, next) {
-		user.getUserFields(uid, ['email', 'username'], function (err, userData) {
-			if (err) {
-				return next(err);
-			}
-			if (!userData.email) {
-				return next(new Error('[[error:user-doesnt-have-email, ' + userData.username + ']]'));
-			}
-			user.reset.send(userData.email, next);
-		});
+		async.waterfall([
+			function (next) {
+				user.getUserFields(uid, ['email', 'username'], next);
+			},
+			function (userData, next) {
+				if (!userData.email) {
+					return next(new Error('[[error:user-doesnt-have-email, ' + userData.username + ']]'));
+				}
+				user.reset.send(userData.email, next);
+			},
+		], next);
 	}, callback);
 };
 
@@ -177,17 +164,17 @@ function deleteUsers(socket, uids, method, callback) {
 					type: 'user-delete',
 					uid: socket.uid,
 					targetUid: uid,
-					ip: socket.ip
+					ip: socket.ip,
 				}, next);
 			},
 			function (next) {
 				plugins.fireHook('action:user.delete', {
 					callerUid: socket.uid,
 					uid: uid,
-					ip: socket.ip
+					ip: socket.ip,
 				});
 				next();
-			}
+			},
 		], next);
 	}, callback);
 }
@@ -196,7 +183,7 @@ User.search = function (socket, data, callback) {
 	var searchData;
 	async.waterfall([
 		function (next) {
-			user.search({query: data.query, searchBy: data.searchBy, uid: socket.uid}, next);
+			user.search({ query: data.query, searchBy: data.searchBy, uid: socket.uid }, next);
 		},
 		function (_searchData, next) {
 			searchData = _searchData;
@@ -220,7 +207,7 @@ User.search = function (socket, data, callback) {
 				}
 			});
 			next(null, searchData);
-		}
+		},
 	], callback);
 };
 
@@ -238,10 +225,10 @@ User.acceptRegistration = function (socket, data, callback) {
 				type: 'registration-approved',
 				uid: socket.uid,
 				ip: socket.ip,
-				targetUid: uid
+				targetUid: uid,
 			});
 			next(null, uid);
-		}
+		},
 	], callback);
 };
 
@@ -258,12 +245,10 @@ User.rejectRegistration = function (socket, data, callback) {
 				username: data.username,
 			});
 			next();
-		}
+		},
 	], callback);
 };
 
 User.restartJobs = function (socket, data, callback) {
 	user.startJobs(callback);
 };
-
-module.exports = User;

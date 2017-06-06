@@ -1,16 +1,18 @@
 {
-	"you-are-on": "Info - You are on <strong>%1:%2</strong>",
-	"host": "host",
-	"pid": "pid",
-	"nodejs": "nodejs",
-	"online": "online",
+	"you-are-on": "Info - Sie verwenden <strong>%1:%2</strong>",
+	"nodes-responded": "%1 Knoten antworteten innerhalb von %2ms",
+	"host": "Host",
+	"pid": "PID",
+	"nodejs": "Node.js Version",
+	"online": "Online",
 	"git": "git",
-	"load": "load",
-	"uptime": "uptime",
+	"memory": "Speicher",
+	"load": "Auslastung",
+	"uptime": "Uptime",
 
-	"registered": "Registered",
+	"registered": "Registriert",
 	"sockets": "Sockets",
-	"guests": "Guests",
+	"guests": "Gäste",
 
 	"info": "Info"
 }

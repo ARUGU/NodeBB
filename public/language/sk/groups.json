@@ -27,6 +27,7 @@
     "details.disableJoinRequests": "Vypnúť požiadavky o prijatie",
     "details.grant": "Povoliť/Zamietnuť vlastníctvo",
     "details.kick": "Vykopnúť",
+    "details.kick_confirm": "Ste si naozaj istý, že chcete odstrániť tohto člena zo skupiny?",
     "details.owner_options": "Správca skupiny",
     "details.group_name": "Názov skupiny",
     "details.member_count": "Počet členov",
@@ -52,5 +53,6 @@
     "new-group.group_name": "Názov skupiny:",
     "upload-group-cover": "Nahrať obrázok skupiny",
     "bulk-invite-instructions": "Zadajte zoznam užívateľských mien oddelených čiarkou, k pozvaniu do tejto skupiny",
-    "bulk-invite": "Hromadné pozvanie"
+    "bulk-invite": "Hromadné pozvanie",
+    "remove_group_cover_confirm": "Ste si naozaj istý, že chcete odstrániť titulný obrázok?"
 }

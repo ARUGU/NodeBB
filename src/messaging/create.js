@@ -8,7 +8,6 @@ var db = require('../database');
 
 
 module.exports = function (Messaging) {
-
 	Messaging.sendMessage = function (uid, roomId, content, timestamp, callback) {
 		async.waterfall([
 			function (next) {
@@ -23,7 +22,7 @@ module.exports = function (Messaging) {
 				}
 
 				Messaging.addMessage(uid, roomId, content, timestamp, next);
-			}
+			},
 		], callback);
 	};
 
@@ -31,9 +30,11 @@ module.exports = function (Messaging) {
 		if (!content) {
 			return callback(new Error('[[error:invalid-chat-message]]'));
 		}
+		content = String(content);
 
-		if (content.length > (meta.config.maximumChatMessageLength || 1000)) {
-			return callback(new Error('[[error:chat-message-too-long]]'));
+		var maximumChatMessageLength = (meta.config.maximumChatMessageLength || 1000);
+		if (content.length > maximumChatMessageLength) {
+			return callback(new Error('[[error:chat-message-too-long, ' + maximumChatMessageLength + ']]'));
 		}
 		callback();
 	};
@@ -53,10 +54,10 @@ module.exports = function (Messaging) {
 			function (_mid, next) {
 				mid = _mid;
 				message = {
-					content: content,
+					content: String(content),
 					timestamp: timestamp,
 					fromuid: fromuid,
-					roomId: roomId
+					roomId: roomId,
 				};
 
 				plugins.fireHook('filter:messaging.save', message, next);
@@ -76,13 +77,13 @@ module.exports = function (Messaging) {
 					async.apply(Messaging.addRoomToUsers, roomId, uids, timestamp),
 					async.apply(Messaging.addMessageToUsers, roomId, uids, mid, timestamp),
 					async.apply(Messaging.markUnread, uids, roomId),
-					async.apply(Messaging.addUsersToRoom, fromuid, [fromuid], roomId)
+					async.apply(Messaging.addUsersToRoom, fromuid, [fromuid], roomId),
 				], next);
 			},
 			function (results, next) {
 				async.parallel({
 					markRead: async.apply(Messaging.markRead, fromuid, roomId),
-					messages: async.apply(Messaging.getMessagesData, [mid], fromuid, roomId, true)
+					messages: async.apply(Messaging.getMessagesData, [mid], fromuid, roomId, true),
 				}, next);
 			},
 			function (results, next) {
@@ -94,7 +95,7 @@ module.exports = function (Messaging) {
 				results.messages[0].mid = mid;
 				results.messages[0].roomId = roomId;
 				next(null, results.messages[0]);
-			}
+			},
 		], callback);
 	};
 

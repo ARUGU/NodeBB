@@ -8,28 +8,34 @@ var user = require('../user');
 var plugins = require('../plugins');
 
 module.exports = function (Messaging) {
-
 	Messaging.getRoomData = function (roomId, callback) {
-		db.getObject('chat:room:' + roomId, function (err, data) {
-			if (err || !data) {
-				return callback(err || new Error('[[error:no-chat-room]]'));
-			}
-			modifyRoomData([data]);
-			callback(null, data);
-		});
+		async.waterfall([
+			function (next) {
+				db.getObject('chat:room:' + roomId, next);
+			},
+			function (data, next) {
+				if (!data) {
+					return callback(new Error('[[error:no-chat-room]]'));
+				}
+				modifyRoomData([data]);
+				next(null, data);
+			},
+		], callback);
 	};
 
 	Messaging.getRoomsData = function (roomIds, callback) {
 		var keys = roomIds.map(function (roomId) {
 			return 'chat:room:' + roomId;
 		});
-		db.getObjects(keys, function (err, roomData) {
-			if (err) {
-				return callback(err);
-			}
-			modifyRoomData(roomData);
-			callback(null, roomData);
-		});
+		async.waterfall([
+			function (next) {
+				db.getObjects(keys, next);
+			},
+			function (roomData, next) {
+				modifyRoomData(roomData);
+				next(null, roomData);
+			},
+		], callback);
 	};
 
 	function modifyRoomData(rooms) {
@@ -55,7 +61,7 @@ module.exports = function (Messaging) {
 				roomId = _roomId;
 				var room = {
 					owner: uid,
-					roomId: roomId
+					roomId: roomId,
 				};
 				db.setObject('chat:room:' + roomId, room, next);
 			},
@@ -70,7 +76,7 @@ module.exports = function (Messaging) {
 			},
 			function (next) {
 				next(null, roomId);
-			}
+			},
 		], callback);
 	};
 
@@ -80,11 +86,11 @@ module.exports = function (Messaging) {
 				db.isSortedSetMember('chat:room:' + roomId + ':uids', uid, next);
 			},
 			function (inRoom, next) {
-				plugins.fireHook('filter:messaging.isUserInRoom', {uid: uid, roomId: roomId, inRoom: inRoom}, next);
+				plugins.fireHook('filter:messaging.isUserInRoom', { uid: uid, roomId: roomId, inRoom: inRoom }, next);
 			},
 			function (data, next) {
 				next(null, data.inRoom);
-			}
+			},
 		], callback);
 	};
 
@@ -97,13 +103,14 @@ module.exports = function (Messaging) {
 	};
 
 	Messaging.isRoomOwner = function (uid, roomId, callback) {
-		db.getObjectField('chat:room:' + roomId, 'owner', function (err, owner) {
-			if (err) {
-				return callback(err);
-			}
-
-			callback(null, parseInt(uid, 10) === parseInt(owner, 10));
-		});
+		async.waterfall([
+			function (next) {
+				db.getObjectField('chat:room:' + roomId, 'owner', next);
+			},
+			function (owner, next) {
+				next(null, parseInt(uid, 10) === parseInt(owner, 10));
+			},
+		], callback);
 	};
 
 	Messaging.addUsersToRoom = function (uid, uids, roomId, callback) {
@@ -124,7 +131,7 @@ module.exports = function (Messaging) {
 			function (next) {
 				async.parallel({
 					userCount: async.apply(db.sortedSetCard, 'chat:room:' + roomId + ':uids'),
-					roomData: async.apply(db.getObject, 'chat:room:' + roomId)
+					roomData: async.apply(db.getObject, 'chat:room:' + roomId),
 				}, next);
 			},
 			function (results, next) {
@@ -132,7 +139,7 @@ module.exports = function (Messaging) {
 					return db.setObjectField('chat:room:' + roomId, 'groupChat', 1, next);
 				}
 				next();
-			}
+			},
 		], callback);
 	};
 
@@ -141,7 +148,7 @@ module.exports = function (Messaging) {
 			function (next) {
 				async.parallel({
 					isOwner: async.apply(Messaging.isRoomOwner, uid, roomId),
-					userCount: async.apply(Messaging.getUserCountInRoom, roomId)
+					userCount: async.apply(Messaging.getUserCountInRoom, roomId),
 				}, next);
 			},
 			function (results, next) {
@@ -152,7 +159,7 @@ module.exports = function (Messaging) {
 					return next(new Error('[[error:cant-remove-last-user]]'));
 				}
 				Messaging.leaveRoom(uids, roomId, next);
-			}
+			},
 		], callback);
 	};
 
@@ -169,7 +176,7 @@ module.exports = function (Messaging) {
 					return 'uid:' + uid + ':chat:rooms:unread';
 				}));
 				db.sortedSetsRemove(keys, roomId, next);
-			}
+			},
 		], callback);
 	};
 
@@ -184,7 +191,7 @@ module.exports = function (Messaging) {
 			},
 			function (uids, next) {
 				user.getUsersFields(uids, ['uid', 'username', 'picture', 'status'], next);
-			}
+			},
 		], callback);
 	};
 
@@ -205,7 +212,7 @@ module.exports = function (Messaging) {
 					return next(new Error('[[error:no-privileges]]'));
 				}
 				db.setObjectField('chat:room:' + roomId, 'roomName', newName, next);
-			}
+			},
 		], callback);
 	};
 
@@ -215,12 +222,11 @@ module.exports = function (Messaging) {
 				db.isSortedSetMember('chat:room:' + roomId + ':uids', uid, next);
 			},
 			function (inRoom, next) {
-				plugins.fireHook('filter:messaging.canReply', {uid: uid, roomId: roomId, inRoom: inRoom, canReply: inRoom}, next);
+				plugins.fireHook('filter:messaging.canReply', { uid: uid, roomId: roomId, inRoom: inRoom, canReply: inRoom }, next);
 			},
 			function (data, next) {
 				next(null, data.canReply);
-			}
+			},
 		], callback);
 	};
-
 };

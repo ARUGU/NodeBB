@@ -1,9 +1,9 @@
-"use strict";
+'use strict';
 
 var async = require('async');
 var groups = require('../../groups');
 
-var Groups = {};
+var Groups = module.exports;
 
 Groups.create = function (socket, data, callback) {
 	if (!data) {
@@ -15,7 +15,7 @@ Groups.create = function (socket, data, callback) {
 	groups.create({
 		name: data.name,
 		description: data.description,
-		ownerUid: socket.uid
+		ownerUid: socket.uid,
 	}, callback);
 };
 
@@ -33,7 +33,7 @@ Groups.join = function (socket, data, callback) {
 				return next(new Error('[[error:group-already-member]]'));
 			}
 			groups.join(data.groupName, data.uid, next);
-		}
+		},
 	], callback);
 };
 
@@ -55,7 +55,7 @@ Groups.leave = function (socket, data, callback) {
 				return next(new Error('[[error:group-not-member]]'));
 			}
 			groups.leave(data.groupName, data.uid, next);
-		}
+		},
 	], callback);
 };
 
@@ -66,5 +66,3 @@ Groups.update = function (socket, data, callback) {
 
 	groups.update(data.groupName, data.values, callback);
 };
-
-module.exports = Groups;

@@ -33,7 +33,7 @@ var helpers = require('../public/src/modules/helpers');
 if (nconf.get('ssl')) {
 	server = require('https').createServer({
 		key: fs.readFileSync(nconf.get('ssl').key),
-		cert: fs.readFileSync(nconf.get('ssl').cert)
+		cert: fs.readFileSync(nconf.get('ssl').cert),
 	}, app);
 } else {
 	server = require('http').createServer(app);
@@ -45,41 +45,42 @@ server.on('error', function (err) {
 	winston.error(err);
 	if (err.code === 'EADDRINUSE') {
 		winston.error('NodeBB address in use, exiting...');
-		process.exit(0);
+		process.exit(1);
 	} else {
 		throw err;
 	}
 });
 
 module.exports.listen = function (callback) {
-	callback = callback || function () {};
+	callback = callback || function () { };
 	emailer.registerApp(app);
 
-	setupExpressApp(app);
+	async.waterfall([
+		function (next) {
+			setupExpressApp(app, next);
+		},
+		function (next) {
+			helpers.register();
 
-	helpers.register();
+			logger.init(app);
 
-	logger.init(app);
+			initializeNodeBB(next);
+		},
+		function (next) {
+			winston.info('NodeBB Ready');
 
-	initializeNodeBB(function (err) {
-		if (err) {
-			return callback(err);
-		}
+			require('./socket.io').server.emit('event:nodebb.ready', {
+				'cache-buster': meta.config['cache-buster'],
+			});
 
-		winston.info('NodeBB Ready');
+			plugins.fireHook('action:nodebb.ready');
 
-		require('./socket.io').server.emit('event:nodebb.ready', {
-			'cache-buster': meta.config['cache-buster']
-		});
-
-		plugins.fireHook('action:nodebb.ready');
-
-		listen(callback);
-	});
+			listen(next);
+		},
+	], callback);
 };
 
 function initializeNodeBB(callback) {
-	winston.info('initializing NodeBB ...');
 	var middleware = require('./middleware');
 
 	async.waterfall([
@@ -88,34 +89,31 @@ function initializeNodeBB(callback) {
 			plugins.init(app, middleware, next);
 		},
 		async.apply(plugins.fireHook, 'static:assets.prepare', {}),
-		async.apply(meta.js.bridgeModules, app),
 		function (next) {
 			plugins.fireHook('static:app.preload', {
 				app: app,
-				middleware: middleware
+				middleware: middleware,
 			}, next);
 		},
 		function (next) {
 			plugins.fireHook('filter:hotswap.prepare', [], next);
 		},
 		function (hotswapIds, next) {
-			routes(app, middleware, hotswapIds);
-			next();
+			routes(app, middleware, hotswapIds, next);
 		},
 		function (next) {
 			async.series([
-				async.apply(meta.js.getFromFile, 'nodebb.min.js'),
-				async.apply(meta.js.getFromFile, 'acp.min.js'),
-				async.apply(meta.css.getFromFile),
-				async.apply(meta.sounds.init),
-				async.apply(languages.init),
-				async.apply(meta.blacklist.load)
+				meta.sounds.addUploads,
+				languages.init,
+				meta.blacklist.load,
 			], next);
-		}
-	], callback);
+		},
+	], function (err) {
+		callback(err);
+	});
 }
 
-function setupExpressApp(app) {
+function setupExpressApp(app, callback) {
 	var middleware = require('./middleware');
 
 	var relativePath = nconf.get('relative_path');
@@ -135,11 +133,14 @@ function setupExpressApp(app) {
 
 	app.use(compression());
 
+	app.get('/ping', ping);
+	app.get('/sping', ping);
+
 	setupFavicon(app);
 
 	app.use(relativePath + '/apple-touch-icon', middleware.routeTouchIcon);
 
-	app.use(bodyParser.urlencoded({extended: true}));
+	app.use(bodyParser.urlencoded({ extended: true }));
 	app.use(bodyParser.json());
 	app.use(cookieParser());
 	app.use(useragent.express());
@@ -150,7 +151,7 @@ function setupExpressApp(app) {
 		key: nconf.get('sessionKey'),
 		cookie: setupCookie(),
 		resave: true,
-		saveUninitialized: true
+		saveUninitialized: true,
 	}));
 
 	app.use(middleware.addHeaders);
@@ -160,18 +161,27 @@ function setupExpressApp(app) {
 	var toobusy = require('toobusy-js');
 	toobusy.maxLag(parseInt(meta.config.eventLoopLagThreshold, 10) || 100);
 	toobusy.interval(parseInt(meta.config.eventLoopInterval, 10) || 500);
+
+	setupAutoLocale(app, callback);
+}
+
+function ping(req, res) {
+	res.status(200).send(req.path === '/sping' ? 'healthy' : '200');
 }
 
 function setupFavicon(app) {
-	var faviconPath = path.join(nconf.get('base_dir'), 'public', meta.config['brand:favicon'] ? meta.config['brand:favicon'] : 'favicon.ico');
+	var faviconPath = meta.config['brand:favicon'] || 'favicon.ico';
+	faviconPath = path.join(nconf.get('base_dir'), 'public', faviconPath.replace(/assets\/uploads/, 'uploads'));
 	if (file.existsSync(faviconPath)) {
 		app.use(nconf.get('relative_path'), favicon(faviconPath));
 	}
 }
 
 function setupCookie() {
+	var ttl = meta.getSessionTTLSeconds() * 1000;
+
 	var cookie = {
-		maxAge: 1000 * 60 * 60 * 24 * (parseInt(meta.config.loginDays, 10) || 14)
+		maxAge: ttl,
 	};
 
 	if (nconf.get('cookieDomain') || meta.config.cookieDomain) {
@@ -190,8 +200,37 @@ function setupCookie() {
 	return cookie;
 }
 
+function setupAutoLocale(app, callback) {
+	languages.listCodes(function (err, codes) {
+		if (err) {
+			return callback(err);
+		}
+
+		var defaultLang = meta.config.defaultLang || 'en-GB';
+
+		var langs = [defaultLang].concat(codes).filter(function (el, i, arr) {
+			return arr.indexOf(el) === i;
+		});
+
+		app.use(function (req, res, next) {
+			if (parseInt(req.uid, 10) > 0 || parseInt(meta.config.autoDetectLang, 10) !== 1) {
+				return next();
+			}
+
+			var lang = req.acceptsLanguages(langs);
+			if (!lang) {
+				return next();
+			}
+			req.query.lang = lang;
+			next();
+		});
+
+		callback();
+	});
+}
+
 function listen(callback) {
-	callback = callback || function () {};
+	callback = callback || function () { };
 	var port = parseInt(nconf.get('port'), 10);
 	var isSocket = isNaN(port);
 	var socketPath = isSocket ? nconf.get('port') : '';
@@ -220,7 +259,7 @@ function listen(callback) {
 		winston.info('Using ports 80 and 443 is not recommend; use a proxy instead. See README.md');
 	}
 
-	var bind_address = ((nconf.get('bind_address') === "0.0.0.0" || !nconf.get('bind_address')) ? '0.0.0.0' : nconf.get('bind_address'));
+	var bind_address = ((nconf.get('bind_address') === '0.0.0.0' || !nconf.get('bind_address')) ? '0.0.0.0' : nconf.get('bind_address'));
 	var args = isSocket ? [socketPath] : [port, bind_address];
 	var oldUmask;
 
@@ -262,11 +301,11 @@ module.exports.testSocket = function (socketPath, callback) {
 	var file = require('./file');
 	async.series([
 		function (next) {
-			file.exists(socketPath, function (exists) {
+			file.exists(socketPath, function (err, exists) {
 				if (exists) {
 					next();
 				} else {
-					callback();
+					callback(err);
 				}
 			});
 		},
@@ -283,5 +322,4 @@ module.exports.testSocket = function (socketPath, callback) {
 		async.apply(fs.unlink, socketPath),	// The socket was stale, kick it out of the way
 	], callback);
 };
-
 

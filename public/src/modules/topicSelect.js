@@ -1,6 +1,5 @@
 'use strict';
 
-/* globals define*/
 
 define('topicSelect', ['components'], function (components) {
 	var TopicSelect = {};
@@ -10,8 +9,8 @@ define('topicSelect', ['components'], function (components) {
 
 	TopicSelect.init = function (onSelect) {
 		topicsContainer = $('[component="category"]');
-		topicsContainer.on('selectstart', function () {
-			return false;
+		topicsContainer.on('selectstart', '[component="topic/select"]', function (ev) {
+			ev.preventDefault();
 		});
 
 		topicsContainer.on('click', '[component="topic/select"]', function (ev) {
@@ -52,8 +51,7 @@ define('topicSelect', ['components'], function (components) {
 	};
 
 	function selectRange(clickedTid) {
-
-		if(!lastSelected) {
+		if (!lastSelected) {
 			lastSelected = $('[component="category/topic"]').first().find('[component="topic/select"]');
 		}
 
@@ -71,7 +69,7 @@ define('topicSelect', ['components'], function (components) {
 			end = tmp;
 		}
 
-		for(var i = start; i <= end; ++i) {
+		for (var i = start; i <= end; i += 1) {
 			var topic = $('[component="category/topic"]').eq(i);
 			toggleSelect(topic.find('[component="topic/select"]'), isSelected);
 		}

@@ -1,4 +1,4 @@
-<nav id="menu" class="visible-xs visible-sm">
+<nav id="menu" class="hidden-md hidden-lg">
 	<section class="menu-section">
 		<h3 class="menu-section-title">[[admin/menu:section-general]]</h3>
 		<ul class="menu-section-list">
@@ -19,7 +19,6 @@
 			<li><a href="{relative_path}/admin/manage/users">[[admin/menu:manage/users]]</a></li>
 			<li><a href="{relative_path}/admin/manage/registration">[[admin/menu:manage/registration]]</a></li>
 			<li><a href="{relative_path}/admin/manage/groups">[[admin/menu:manage/groups]]</a></li>
-			<li><a href="{relative_path}/admin/manage/flags">[[admin/menu:manage/flags]]</a></li>
 			<li><a href="{relative_path}/admin/manage/ip-blacklist">[[admin/menu:manage/ip-blacklist]]</a></li>
 		</ul>
 	</section>
@@ -192,7 +191,6 @@
 					<li><a href="{relative_path}/admin/manage/users">[[admin/menu:manage/users]]</a></li>
 					<li><a href="{relative_path}/admin/manage/registration">[[admin/menu:manage/registration]]</a></li>
 					<li><a href="{relative_path}/admin/manage/groups">[[admin/menu:manage/groups]]</a></li>
-					<li><a href="{relative_path}/admin/manage/flags">[[admin/menu:manage/flags]]</a></li>
 					<li><a href="{relative_path}/admin/manage/ip-blacklist">[[admin/menu:manage/ip-blacklist]]</a></li>
 				</ul>
 			</li>

@@ -1,9 +1,12 @@
 'use strict';
 
+require('colors');
+var path = require('path');
 var winston = require('winston');
 var nconf = require('nconf');
 var async = require('async');
 var db = require('./database');
+var events = require('./events');
 
 var Reset = {};
 
@@ -12,20 +15,32 @@ Reset.reset = function (callback) {
 	db.init(function (err) {
 		if (err) {
 			winston.error(err.message);
-			process.exit();
+			process.exit(1);
 		}
 
 		if (nconf.get('t')) {
-			if(nconf.get('t') === true) {
+			var themeId = nconf.get('t');
+			if (themeId === true) {
 				resetThemes(callback);
 			} else {
-				resetTheme(nconf.get('t'), callback);
+				if (themeId.indexOf('nodebb-') !== 0) {
+					// Allow omission of `nodebb-theme-`
+					themeId = 'nodebb-theme-' + themeId;
+				}
+
+				resetTheme(themeId, callback);
 			}
 		} else if (nconf.get('p')) {
-			if (nconf.get('p') === true) {
+			var pluginId = nconf.get('p');
+			if (pluginId === true) {
 				resetPlugins(callback);
 			} else {
-				resetPlugin(nconf.get('p'), callback);
+				if (pluginId.indexOf('nodebb-') !== 0) {
+					// Allow omission of `nodebb-plugin-`
+					pluginId = 'nodebb-plugin-' + pluginId;
+				}
+
+				resetPlugin(pluginId, callback);
 			}
 		} else if (nconf.get('w')) {
 			resetWidgets(callback);
@@ -39,11 +54,7 @@ Reset.reset = function (callback) {
 					winston.error('[reset] Errors were encountered while resetting your forum settings: %s', err.message);
 				}
 
-				if (typeof callback === 'function') {
-					callback();
-				} else {
-					process.exit(0);
-				}
+				callback();
 			});
 		} else {
 			process.stdout.write('\nNodeBB Reset\n'.bold);
@@ -57,8 +68,9 @@ Reset.reset = function (callback) {
 
 			process.stdout.write('\nPlugin and theme reset flags (-p & -t) can take a single argument\n');
 			process.stdout.write('    e.g. ./nodebb reset -p nodebb-plugin-mentions, ./nodebb reset -t nodebb-theme-persona\n');
+			process.stdout.write('         Prefix is optional, e.g. ./nodebb reset -p markdown, ./nodebb reset -t persona\n');
 
-			process.exit();
+			process.exit(0);
 		}
 	});
 };
@@ -67,26 +79,22 @@ function resetSettings(callback) {
 	var meta = require('./meta');
 	meta.configs.set('allowLocalLogin', 1, function (err) {
 		winston.info('[reset] Settings reset to default');
-		if (typeof callback === 'function') {
-			callback(err);
-		} else {
-			process.exit();
-		}
+		callback(err);
 	});
 }
 
 function resetTheme(themeId, callback) {
 	var meta = require('./meta');
 	var fs = require('fs');
-	
-	fs.access('node_modules/' + themeId + '/package.json', function (err, fd) {
+
+	fs.access(path.join(__dirname, '../node_modules', themeId, 'package.json'), function (err) {
 		if (err) {
 			winston.warn('[reset] Theme `%s` is not installed on this forum', themeId);
-			process.exit();
+			callback(new Error('theme-not-found'));
 		} else {
 			meta.themes.set({
 				type: 'local',
-				id: themeId
+				id: themeId,
 			}, function (err) {
 				if (err) {
 					winston.warn('[reset] Failed to reset theme to ' + themeId);
@@ -94,12 +102,8 @@ function resetTheme(themeId, callback) {
 					winston.info('[reset] Theme reset to ' + themeId);
 				}
 
-				if (typeof callback === 'function') {
-					callback();
-				} else {
-					process.exit(0);
-				}
-			});		
+				callback();
+			});
 		}
 	});
 }
@@ -109,14 +113,10 @@ function resetThemes(callback) {
 
 	meta.themes.set({
 		type: 'local',
-		id: 'nodebb-theme-persona'
+		id: 'nodebb-theme-persona',
 	}, function (err) {
 		winston.info('[reset] Theme reset to Persona');
-		if (typeof callback === 'function') {
-			callback(err);
-		} else {
-			process.exit(0);
-		}
+		callback(err);
 	});
 }
 
@@ -133,46 +133,39 @@ function resetPlugin(pluginId, callback) {
 			} else {
 				next();
 			}
-		}
+		},
+		function (next) {
+			events.log({
+				type: 'plugin-deactivate',
+				text: pluginId,
+			}, next);
+		},
 	], function (err) {
 		if (err) {
 			winston.error('[reset] Could not disable plugin: %s encountered error %s', pluginId, err.message);
+		} else if (active) {
+			winston.info('[reset] Plugin `%s` disabled', pluginId);
 		} else {
-			if (active) {
-				winston.info('[reset] Plugin `%s` disabled', pluginId);
-			} else {
-				winston.warn('[reset] Plugin `%s` was not active on this forum', pluginId);
-				winston.info('[reset] No action taken.');
-			}
+			winston.warn('[reset] Plugin `%s` was not active on this forum', pluginId);
+			winston.info('[reset] No action taken.');
+			err = new Error('plugin-not-active');
 		}
 
-		if (typeof callback === 'function') {
-			callback();
-		} else {
-			process.exit(0);
-		}
+		callback(err);
 	});
 }
 
 function resetPlugins(callback) {
 	db.delete('plugins:active', function (err) {
 		winston.info('[reset] All Plugins De-activated');
-		if (typeof callback === 'function') {
-			callback(err);
-		} else {
-			process.exit(0);
-		}
+		callback(err);
 	});
 }
 
 function resetWidgets(callback) {
 	require('./widgets').reset(function (err) {
 		winston.info('[reset] All Widgets moved to Draft Zone');
-		if (typeof callback === 'function') {
-			callback(err);
-		} else {
-			process.exit();
-		}
+		callback(err);
 	});
 }
 

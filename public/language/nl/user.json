@@ -33,6 +33,7 @@
     "chat": "Chat",
     "chat_with": "Chat verder met %1",
     "new_chat_with": "Begin een chat met %1",
+    "flag-profile": "Profiel vlaggen",
     "follow": "Volgen",
     "unfollow": "Ontvolgen",
     "more": "Meer",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "Helaas, de gewenste gebruikersnaam is al door iemand in gebruik genomen dus vandaar een kleine aanpassing naar <strong>%1</strong> doorgevoerd",
     "password_same_as_username": "Je wachtwoord is hetzelfde als je gebruikersnaam. Kies een ander wachtwoord.",
     "password_same_as_email": "Je wachtwoord is hetzelfde als je email, kies alsjeblieft een ander wachtwoord.",
+    "weak_password": "Weak password.",
     "upload_picture": "Upload afbeelding",
     "upload_a_picture": "Upload een afbeelding",
     "remove_uploaded_picture": "Verwijder gëuploade foto",
     "upload_cover_picture": "Upload je coverafbeelding",
+    "remove_cover_picture_confirm": "Weet u zeker dat u de cover foto wilt verwijderen?",
+    "crop_picture": "Foto bijsnijden",
+    "upload_cropped_picture": "Bijsnijden en uploaden",
     "settings": "Instellingen",
     "show_email": "E-mailadres weergeven",
     "show_fullname": "Laat mijn volledige naam zien",
@@ -126,5 +131,6 @@
     "info.username-history": "Gebruikersnaam geschiedenis",
     "info.email-history": "Email geschiedenis",
     "info.moderation-note": "Moderatie notitie",
-    "info.moderation-note.success": "Moderatie notitie opgeslagen"
+    "info.moderation-note.success": "Moderatie notitie opgeslagen",
+    "info.moderation-note.add": "Add note"
 }
