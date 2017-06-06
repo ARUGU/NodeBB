@@ -6,10 +6,10 @@ var db = require('../../database');
 var user = require('../../user');
 var posts = require('../../posts');
 var privileges = require('../../privileges');
+var meta = require('../../meta');
 var helpers = require('./helpers');
 
 module.exports = function (SocketPosts) {
-
 	SocketPosts.getVoters = function (socket, data, callback) {
 		if (!data || !data.pid || !data.cid) {
 			return callback(new Error('[[error:invalid-data]]'));
@@ -17,6 +17,9 @@ module.exports = function (SocketPosts) {
 
 		async.waterfall([
 			function (next) {
+				if (parseInt(meta.config.votesArePublic, 10) !== 0) {
+					return next(null, true);
+				}
 				privileges.categories.isAdminOrMod(data.cid, socket.uid, next);
 			},
 			function (isAdminOrMod, next) {
@@ -30,7 +33,7 @@ module.exports = function (SocketPosts) {
 					},
 					downvoteUids: function (next) {
 						db.getSetMembers('pid:' + data.pid + ':downvote', next);
-					}
+					},
 				}, next);
 			},
 			function (results, next) {
@@ -46,9 +49,9 @@ module.exports = function (SocketPosts) {
 					},
 					downvoteCount: function (next) {
 						next(null, results.downvoteUids.length);
-					}
+					},
 				}, next);
-			}
+			},
 		], callback);
 	};
 
@@ -57,25 +60,30 @@ module.exports = function (SocketPosts) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
 
-		posts.getUpvotedUidsByPids(pids, function (err, data) {
-			if (err || !Array.isArray(data) || !data.length) {
-				return callback(err, []);
-			}
-
-			async.map(data, function (uids, next)  {
-				var otherCount = 0;
-				if (uids.length > 6) {
-					otherCount = uids.length - 5;
-					uids = uids.slice(0, 5);
+		async.waterfall([
+			function (next) {
+				posts.getUpvotedUidsByPids(pids, next);
+			},
+			function (data, next) {
+				if (!data.length) {
+					return callback(null, []);
 				}
-				user.getUsernamesByUids(uids, function (err, usernames) {
-					next(err, {
-						otherCount: otherCount,
-						usernames: usernames
+
+				async.map(data, function (uids, next) {
+					var otherCount = 0;
+					if (uids.length > 6) {
+						otherCount = uids.length - 5;
+						uids = uids.slice(0, 5);
+					}
+					user.getUsernamesByUids(uids, function (err, usernames) {
+						next(err, {
+							otherCount: otherCount,
+							usernames: usernames,
+						});
 					});
-				});
-			}, callback);
-		});
+				}, next);
+			},
+		], callback);
 	};
 
 	SocketPosts.upvote = function (socket, data, callback) {

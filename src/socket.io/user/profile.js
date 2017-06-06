@@ -8,7 +8,6 @@ var events = require('../../events');
 var privileges = require('../../privileges');
 
 module.exports = function (SocketUser) {
-
 	SocketUser.changeUsernameEmail = function (socket, data, callback) {
 		if (!data || !data.uid || !socket.uid) {
 			return callback(new Error('[[error:invalid-data]]'));
@@ -20,7 +19,7 @@ module.exports = function (SocketUser) {
 			},
 			function (next) {
 				SocketUser.updateProfile(socket, data, next);
-			}
+			},
 		], callback);
 	};
 
@@ -34,7 +33,21 @@ module.exports = function (SocketUser) {
 			},
 			function (next) {
 				user.updateCoverPicture(data, next);
-			}
+			},
+		], callback);
+	};
+
+	SocketUser.uploadCroppedPicture = function (socket, data, callback) {
+		if (!socket.uid) {
+			return callback(new Error('[[error:no-privileges]]'));
+		}
+		async.waterfall([
+			function (next) {
+				user.isAdminOrSelf(socket.uid, data.uid, next);
+			},
+			function (next) {
+				user.uploadCroppedPicture(data, next);
+			},
 		], callback);
 	};
 
@@ -49,37 +62,39 @@ module.exports = function (SocketUser) {
 			},
 			function (next) {
 				user.removeCoverPicture(data, next);
-			}
+			},
 		], callback);
 	};
 
 	function isAdminOrSelfAndPasswordMatch(uid, data, callback) {
-		async.parallel({
-			isAdmin: async.apply(user.isAdministrator, uid),
-			hasPassword: async.apply(user.hasPassword, data.uid),
-			passwordMatch: function (next) {
-				if (data.password) {
-					user.isPasswordCorrect(data.uid, data.password, next);
-				} else {
-					next(null, false);
+		async.waterfall([
+			function (next) {
+				async.parallel({
+					isAdmin: async.apply(user.isAdministrator, uid),
+					hasPassword: async.apply(user.hasPassword, data.uid),
+					passwordMatch: function (next) {
+						if (data.password) {
+							user.isPasswordCorrect(data.uid, data.password, next);
+						} else {
+							next(null, false);
+						}
+					},
+				}, next);
+			},
+			function (results, next) {
+				var isSelf = parseInt(uid, 10) === parseInt(data.uid, 10);
+
+				if (!results.isAdmin && !isSelf) {
+					return next(new Error('[[error:no-privileges]]'));
 				}
-			}
-		}, function (err, results) {
-			if (err) {
-				return callback(err);
-			}
-			var isSelf = parseInt(uid, 10) === parseInt(data.uid, 10);
 
-			if (!results.isAdmin && !isSelf) {
-				return callback(new Error('[[error:no-privileges]]'));
-			}
+				if (isSelf && results.hasPassword && !results.passwordMatch) {
+					return next(new Error('[[error:invalid-password]]'));
+				}
 
-			if (isSelf && results.hasPassword && !results.passwordMatch) {
-				return callback(new Error('[[error:invalid-password]]'));
-			}
-
-			callback();
-		});
+				next();
+			},
+		], callback);
 	}
 
 	SocketUser.changePassword = function (socket, data, callback) {
@@ -90,20 +105,20 @@ module.exports = function (SocketUser) {
 		if (!data || !data.uid) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
-
-		user.changePassword(socket.uid, data, function (err) {
-			if (err) {
-				return callback(err);
-			}
-
-			events.log({
-				type: 'password-change',
-				uid: socket.uid,
-				targetUid: data.uid,
-				ip: socket.ip
-			});
-			callback();
-		});
+		async.waterfall([
+			function (next) {
+				user.changePassword(socket.uid, data, next);
+			},
+			function (next) {
+				events.log({
+					type: 'password-change',
+					uid: socket.uid,
+					targetUid: data.uid,
+					ip: socket.ip,
+				});
+				next();
+			},
+		], callback);
 	};
 
 	SocketUser.updateProfile = function (socket, data, callback) {
@@ -132,7 +147,7 @@ module.exports = function (SocketUser) {
 					},
 					canEdit: function (next) {
 						privileges.users.canEdit(socket.uid, data.uid, next);
-					}
+					},
 				}, next);
 			},
 			function (results, next) {
@@ -148,7 +163,7 @@ module.exports = function (SocketUser) {
 					data.email = oldUserData.email;
 				}
 
-				user.updateProfile(data.uid, data, next);
+				user.updateProfile(socket.uid, data, next);
 			},
 			function (userData, next) {
 				function log(type, eventData) {
@@ -161,17 +176,15 @@ module.exports = function (SocketUser) {
 				}
 
 				if (userData.email !== oldUserData.email) {
-					log('email-change', {oldEmail: oldUserData.email, newEmail: userData.email});
+					log('email-change', { oldEmail: oldUserData.email, newEmail: userData.email });
 				}
 
 				if (userData.username !== oldUserData.username) {
-					log('username-change', {oldUsername: oldUserData.username, newUsername: userData.username});
+					log('username-change', { oldUsername: oldUserData.username, newUsername: userData.username });
 				}
 
 				next(null, userData);
-			}
+			},
 		], callback);
 	};
-
-
 };

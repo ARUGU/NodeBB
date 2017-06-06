@@ -27,6 +27,7 @@
     "details.disableJoinRequests": "参加申請を無効にする",
     "details.grant": "寄贈/取り消す管理権限",
     "details.kick": "キック",
+    "details.kick_confirm": "このメンバーをグループから削除",
     "details.owner_options": "グループの管理",
     "details.group_name": "グループ名",
     "details.member_count": "メンバー数",
@@ -52,5 +53,6 @@
     "new-group.group_name": "グループ名:",
     "upload-group-cover": "グループのカバーをアップロード",
     "bulk-invite-instructions": "ユーザー名をカンマ区切りして入力することで、このグループへ招待します。",
-    "bulk-invite": "バルク招待"
+    "bulk-invite": "バルク招待",
+    "remove_group_cover_confirm": "カバー写真を削除してもよろしいですか？"
 }

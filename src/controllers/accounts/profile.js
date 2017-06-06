@@ -12,8 +12,9 @@ var accountHelpers = require('./helpers');
 var helpers = require('../helpers');
 var pagination = require('../../pagination');
 var messaging = require('../../messaging');
+var translator = require('../../translator');
 
-var profileController = {};
+var profileController = module.exports;
 
 profileController.get = function (req, res, callback) {
 	var lowercaseSlug = req.params.userslug.toLowerCase();
@@ -41,6 +42,7 @@ profileController.get = function (req, res, callback) {
 			userData = _userData;
 
 			req.session.uids_viewed = req.session.uids_viewed || {};
+
 			if (req.uid !== parseInt(userData.uid, 10) && (!req.session.uids_viewed[userData.uid] || req.session.uids_viewed[userData.uid] < Date.now() - 3600000)) {
 				user.incrementUserFieldBy(userData.uid, 'profileviews', 1);
 				req.session.uids_viewed[userData.uid] = Date.now();
@@ -62,7 +64,7 @@ profileController.get = function (req, res, callback) {
 					} else {
 						next();
 					}
-				}
+				},
 			}, next);
 		},
 		function (results, next) {
@@ -74,15 +76,12 @@ profileController.get = function (req, res, callback) {
 				return p && parseInt(p.deleted, 10) !== 1;
 			});
 			userData.hasPrivateChat = results.hasPrivateChat;
-			userData.aboutme = results.aboutme;
+			userData.aboutme = translator.escape(results.aboutme);
 			userData.nextStart = results.posts.nextStart;
-			userData.breadcrumbs = helpers.buildBreadcrumbs([{text: userData.username}]);
+			userData.breadcrumbs = helpers.buildBreadcrumbs([{ text: userData.username }]);
 			userData.title = userData.username;
 			var pageCount = Math.ceil(userData.postcount / itemsPerPage);
 			userData.pagination = pagination.create(page, pageCount, req.query);
-
-			userData['cover:url'] = userData['cover:url'] || require('../../coverPhoto').getDefaultProfileCover(userData.uid);
-			userData['cover:position'] = userData['cover:position'] || '50% 50%';
 
 			if (!parseInt(userData.profileviews, 10)) {
 				userData.profileviews = 1;
@@ -92,21 +91,21 @@ profileController.get = function (req, res, callback) {
 
 			res.locals.metaTags = [
 				{
-					name: "title",
-					content: userData.fullname || userData.username
+					name: 'title',
+					content: userData.fullname || userData.username,
 				},
 				{
-					name: "description",
-					content: plainAboutMe
+					name: 'description',
+					content: plainAboutMe,
 				},
 				{
 					property: 'og:title',
-					content: userData.fullname || userData.username
+					content: userData.fullname || userData.username,
 				},
 				{
 					property: 'og:description',
-					content: plainAboutMe
-				}
+					content: plainAboutMe,
+				},
 			];
 
 			if (userData.picture) {
@@ -114,12 +113,12 @@ profileController.get = function (req, res, callback) {
 					{
 						property: 'og:image',
 						content: userData.picture,
-						noEscape: true
+						noEscape: true,
 					},
 					{
-						property: "og:image:url",
+						property: 'og:image:url',
 						content: userData.picture,
-						noEscape: true
+						noEscape: true,
 					}
 				);
 			}
@@ -127,14 +126,11 @@ profileController.get = function (req, res, callback) {
 				return group && group.name === userData.groupTitle;
 			});
 
-			plugins.fireHook('filter:user.account', {userData: userData, uid: req.uid}, next);
-		}
-	], function (err, results) {
-		if (err) {
-			return callback(err);
-		}
-		res.render('account/profile', results.userData);
-	});
+			plugins.fireHook('filter:user.account', { userData: userData, uid: req.uid }, next);
+		},
+		function (results) {
+			res.render('account/profile', results.userData);
+		},
+	], callback);
 };
 
-module.exports = profileController;

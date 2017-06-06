@@ -31,8 +31,8 @@
 			<label>[[admin/settings/general:description]]</label>
 			<input type="text" class="form-control" placeholder="[[admin/settings/general:description.placeholder]]" data-field="description" /><br />
 
-			<label>[[admin/settings/general:keywords]]</label>
-			<input type="text" class="form-control" placeholder="[[admin/settings/general:keywords-placeholder]]" data-field="keywords" /><br />
+			<label>[[admin/settings/general:keywords]]</label><br />
+			<input type="text" class="form-control" placeholder="[[admin/settings/general:keywords-placeholder]]" data-field="keywords" data-field-type="tagsinput" /><br />
 		</form>
 	</div>
 </div>
@@ -114,6 +114,23 @@
 </div>
 
 <div class="row">
+	<div class="col-sm-2 col-xs-12 settings-header">[[admin/settings/general:search-default-sort-by]]</div>
+	<div class="col-sm-10 col-xs-12">
+		<select id="post-sort-by" class="form-control" data-field="searchDefaultSortBy">
+			<option value="relevance">[[search:relevance]]</option>
+			<option value="timestamp">[[search:post-time]]</option>
+			<option value="teaser.timestamp">[[search:last-reply-time]]</option>
+			<option value="topic.title">[[search:topic-title]]</option>
+			<option value="topic.postcount">[[search:number-of-replies]]</option>
+			<option value="topic.viewcount">[[search:number-of-views]]</option>
+			<option value="topic.timestamp">[[search:topic-start-date]]</option>
+			<option value="user.username">[[search:username]]</option>
+			<option value="category.name">[[search:category]]</option>
+		</select>
+	</div>
+</div>
+
+<div class="row">
 	<div class="col-sm-2 col-xs-12 settings-header">[[admin/settings/general:outgoing-links]]</div>
 	<div class="col-sm-10 col-xs-12">
 		<form>
@@ -122,6 +139,11 @@
 					<input type="checkbox" class="mdl-switch__input" id="showSiteTitle" data-field="useOutgoingLinksPage">
 					<span class="mdl-switch__label"><strong>[[admin/settings/general:outgoing-links.warning-page]]</strong></span>
 				</label>
+			</div>
+
+			<div class="form-group">
+				<label for="outgoingLinks:whitelist">[[admin/settings/general:outgoing-links.whitelist]]</label><br />
+				<input id="outgoingLinks:whitelist" type="text" class="form-control" placeholder="subdomain.domain.com" data-field="outgoingLinks:whitelist" data-field-type="tagsinput" />
 			</div>
 		</form>
 	</div>

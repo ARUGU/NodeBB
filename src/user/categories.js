@@ -6,29 +6,29 @@ var db = require('../database');
 var categories = require('../categories');
 
 module.exports = function (User) {
-
 	User.getIgnoredCategories = function (uid, callback) {
 		db.getSortedSetRange('uid:' + uid + ':ignored:cids', 0, -1, callback);
 	};
 
 	User.getWatchedCategories = function (uid, callback) {
-		async.parallel({
-			ignored: function (next) {
-				User.getIgnoredCategories(uid, next);
+		async.waterfall([
+			function (next) {
+				async.parallel({
+					ignored: function (next) {
+						User.getIgnoredCategories(uid, next);
+					},
+					all: function (next) {
+						db.getSortedSetRange('categories:cid', 0, -1, next);
+					},
+				}, next);
 			},
-			all: function (next) {
-				db.getSortedSetRange('categories:cid', 0, -1, next);
-			}
-		}, function (err, results) {
-			if (err) {
-				return callback(err);
-			}
-
-			var watched = results.all.filter(function (cid) {
-				return cid && results.ignored.indexOf(cid) === -1;
-			});
-			callback(null, watched);
-		});
+			function (results, next) {
+				var watched = results.all.filter(function (cid) {
+					return cid && results.ignored.indexOf(cid) === -1;
+				});
+				next(null, watched);
+			},
+		], callback);
 	};
 
 	User.ignoreCategory = function (uid, cid, callback) {
@@ -48,7 +48,7 @@ module.exports = function (User) {
 			},
 			function (next) {
 				db.sortedSetAdd('cid:' + cid + ':ignorers', Date.now(), uid, next);
-			}
+			},
 		], callback);
 	};
 
@@ -69,7 +69,7 @@ module.exports = function (User) {
 			},
 			function (next) {
 				db.sortedSetRemove('cid:' + cid + ':ignorers', uid, next);
-			}
+			},
 		], callback);
 	};
 };

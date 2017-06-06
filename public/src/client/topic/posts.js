@@ -1,35 +1,33 @@
 'use strict';
 
-/* globals config, app, ajaxify, define, utils */
 
 define('forum/topic/posts', [
 	'forum/pagination',
 	'forum/infinitescroll',
 	'forum/topic/postTools',
+	'forum/topic/images',
 	'navigator',
-	'components'
-], function (pagination, infinitescroll, postTools, navigator, components) {
-
-	var Posts = {
-		_imageLoaderTimeout: undefined
-	};
+	'components',
+], function (pagination, infinitescroll, postTools, images, navigator, components) {
+	var Posts = { };
 
 	Posts.onNewPost = function (data) {
-		if (!data || !data.posts || !data.posts.length) {
+		if (!data || !data.posts || !data.posts.length || parseInt(data.posts[0].tid, 10) !== parseInt(ajaxify.data.tid, 10)) {
 			return;
 		}
 
-		if (parseInt(data.posts[0].tid, 10) !== parseInt(ajaxify.data.tid, 10)) {
-			return;
-		}
-
-		data.loggedIn = app.user.uid ? true : false;
+		data.loggedIn = !!app.user.uid;
 		data.privileges = ajaxify.data.privileges;
+
+		// prevent timeago in future by setting timestamp to 1 sec behind now
+		data.posts[0].timestamp = Date.now() - 1000;
+		data.posts[0].timestampISO = utils.toISOString(data.posts[0].timestamp);
+
 		Posts.modifyPostsByPrivileges(data.posts);
 
 		updatePostCounts(data.posts);
 
-		ajaxify.data.postcount ++;
+		ajaxify.data.postcount += 1;
 		postTools.updatePostCount(ajaxify.data.postcount);
 
 		if (config.usePagination) {
@@ -55,7 +53,7 @@ define('forum/topic/posts', [
 	};
 
 	function updatePostCounts(posts) {
-		for (var i = 0; i < posts.length; ++i) {
+		for (var i = 0; i < posts.length; i += 1) {
 			var cmp = components.get('user/postcount', posts[i].uid);
 			cmp.html(parseInt(cmp.attr('data-postcount'), 10) + 1);
 			utils.addCommasToNumbers(cmp);
@@ -65,7 +63,7 @@ define('forum/topic/posts', [
 	function onNewPostPagination(data) {
 		function scrollToPost() {
 			scrollToPostIfSelf(data.posts[0]);
-			Posts.loadImages();
+			images.loadImages();
 		}
 
 		var posts = data.posts;
@@ -89,8 +87,8 @@ define('forum/topic/posts', [
 	}
 
 	function updatePagination() {
-		$.get(config.relative_path + '/api/topic/pagination/' + ajaxify.data.tid, {page: ajaxify.data.pagination.currentPage}, function (paginationData) {
-			app.parseAndTranslate('partials/paginator', {pagination: paginationData}, function (html) {
+		$.get(config.relative_path + '/api/topic/pagination/' + ajaxify.data.tid, { page: ajaxify.data.pagination.currentPage }, function (paginationData) {
+			app.parseAndTranslate('partials/paginator', { pagination: paginationData }, function (html) {
 				$('[component="pagination"]').after(html).remove();
 			});
 		});
@@ -99,21 +97,22 @@ define('forum/topic/posts', [
 	function onNewPostInfiniteScroll(data) {
 		var direction = config.topicPostSort === 'oldest_to_newest' || config.topicPostSort === 'most_votes' ? 1 : -1;
 
+		var isPreviousPostAdded = $('[component="post"][data-index="' + (data.posts[0].index - 1) + '"]').length;
+		if (!isPreviousPostAdded && (!data.posts[0].selfPost || !ajaxify.data.scrollToMyPost)) {
+			return;
+		}
+
 		createNewPosts(data, components.get('post').not('[data-index=0]'), direction, function (html) {
 			if (html) {
 				html.addClass('new');
 			}
 			scrollToPostIfSelf(data.posts[0]);
-			Posts.loadImages();
+			images.loadImages();
 		});
 	}
 
 	function scrollToPostIfSelf(post) {
-		if (!ajaxify.data.scrollToMyPost) {
-			return;
-		}
-		var isSelfPost = parseInt(post.uid, 10) === parseInt(app.user.uid, 10);
-		if (isSelfPost) {
+		if (post.selfPost && ajaxify.data.scrollToMyPost) {
 			navigator.scrollBottom(post.index);
 		}
 	}
@@ -164,7 +163,8 @@ define('forum/topic/posts', [
 			return callback();
 		}
 
-		var after, before;
+		var after;
+		var before;
 
 		if (direction > 0 && repliesSelector.length) {
 			after = repliesSelector.last();
@@ -174,10 +174,9 @@ define('forum/topic/posts', [
 
 		data.slug = ajaxify.data.slug;
 
-		$(window).trigger('action:posts.loading', {posts: data.posts, after: after, before: before});
+		$(window).trigger('action:posts.loading', { posts: data.posts, after: after, before: before });
 
 		app.parseAndTranslate('topic', 'posts', data, function (html) {
-
 			html = html.filter(function () {
 				var pid = $(this).attr('data-pid');
 				return pid && $('[component="post"][data-pid="' + pid + '"]').length === 0;
@@ -187,8 +186,8 @@ define('forum/topic/posts', [
 				html.insertAfter(after);
 			} else if (before) {
 				// Save document height and position for future reference (about 5 lines down)
-				var height = $(document).height(),
-					scrollTop = $(window).scrollTop();
+				var height = $(document).height();
+				var scrollTop = $(window).scrollTop();
 
 				html.insertBefore(before);
 
@@ -198,9 +197,9 @@ define('forum/topic/posts', [
 				components.get('topic').append(html);
 			}
 
-			infinitescroll.removeExtra($('[component="post"]'), direction, 40);
+			infinitescroll.removeExtra($('[component="post"]'), direction, config.postsPerPage * 2);
 
-			$(window).trigger('action:posts.loaded', {posts: data.posts});
+			$(window).trigger('action:posts.loaded', { posts: data.posts });
 
 			Posts.processPage(html);
 
@@ -233,8 +232,9 @@ define('forum/topic/posts', [
 		infinitescroll.loadMore('topics.loadMore', {
 			tid: tid,
 			after: after,
+			count: config.postsPerPage,
 			direction: direction,
-			topicPostSort: config.topicPostSort
+			topicPostSort: config.topicPostSort,
 		}, function (data, done) {
 			indicatorEl.fadeOut();
 
@@ -248,7 +248,7 @@ define('forum/topic/posts', [
 	};
 
 	Posts.processPage = function (posts) {
-		Posts.unloadImages(posts);
+		images.unloadImages(posts);
 		Posts.showBottomPostBar();
 		posts.find('[component="post/content"] img:not(.not-responsive)').addClass('img-responsive');
 		app.createUserTooltips(posts);
@@ -259,108 +259,6 @@ define('forum/topic/posts', [
 
 		addBlockquoteEllipses(posts.find('[component="post/content"] > blockquote > blockquote'));
 		hidePostToolsForDeletedPosts(posts);
-	};
-
-	Posts.unloadImages = function (posts) {
-		var images = posts.find('[component="post/content"] img:not(.not-responsive)');
-
-		if (config.delayImageLoading) {
-			images.each(function () {
-				$(this).attr('data-src', $(this).attr('src'));
-			}).attr('data-state', 'unloaded').attr('src', 'about:blank');
-		} else {
-			images.attr('data-state', 'loaded');
-			Posts.wrapImagesInLinks(posts);
-		}
-	};
-
-	Posts.loadImages = function (threshold) {
-		if (Posts._imageLoaderTimeout) {
-			clearTimeout(Posts._imageLoaderTimeout);
-		}
-
-		Posts._imageLoaderTimeout = setTimeout(function () {
-			/*
-				If threshold is defined, images loaded above this threshold will modify
-				the user's scroll position so they are not scrolled away from content
-				they were reading. Images loaded below this threshold will push down content.
-
-				If no threshold is defined, loaded images will push down content, as per
-				default
-			*/
-
-			var images = components.get('post/content').find('img[data-state="unloaded"]'),
-				visible = images.filter(function () {
-					return utils.isElementInViewport(this);
-				}),
-				posts = $.unique(visible.map(function () {
-					return $(this).parents('[component="post"]').get(0);
-				})),
-				scrollTop = $(window).scrollTop(),
-				adjusting = false,
-				adjustQueue = [],
-				adjustPosition = function () {
-					adjusting = true;
-					oldHeight = document.body.clientHeight;
-
-					// Display the image
-					$(this).attr('data-state', 'loaded');
-					newHeight = document.body.clientHeight;
-
-					var imageRect = this.getBoundingClientRect();
-					if (imageRect.top < threshold) {
-						scrollTop = scrollTop + (newHeight - oldHeight);
-						$(window).scrollTop(scrollTop);
-					}
-
-					if (adjustQueue.length) {
-						adjustQueue.pop()();
-					} else {
-						adjusting = false;
-
-						Posts.wrapImagesInLinks(posts);
-						posts.length = 0;
-					}
-				},
-				oldHeight, newHeight;
-
-			// For each image, reset the source and adjust scrollTop when loaded
-			visible.attr('data-state', 'loading');
-			visible.each(function (index, image) {
-				image = $(image);
-
-				image.on('load', function () {
-					if (!adjusting) {
-						adjustPosition.call(this);
-					} else {
-						adjustQueue.push(adjustPosition.bind(this));
-					}
-				});
-
-				image.attr('src', image.attr('data-src'));
-				image.removeAttr('data-src');
-			});
-		}, 250);
-	};
-
-	Posts.wrapImagesInLinks = function (posts) {
-		posts.find('[component="post/content"] img:not(.emoji)').each(function () {
-			var $this = $(this),
-				src = $this.attr('src'),
-				suffixRegex = /-resized(\.[\w]+)?$/;
-
-			if (src === 'about:blank') {
-				return;
-			}
-
-			if (utils.isRelativeUrl(src) && suffixRegex.test(src)) {
-				src = src.replace(suffixRegex, '$1');
-			}
-
-			if (!$this.parent().is('a')) {
-				$this.wrap('<a href="' + src + '" target="_blank">');
-			}
-		});
 	};
 
 	Posts.showBottomPostBar = function () {
@@ -393,5 +291,4 @@ define('forum/topic/posts', [
 	}
 
 	return Posts;
-
 });

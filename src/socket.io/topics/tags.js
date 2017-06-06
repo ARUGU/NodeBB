@@ -3,10 +3,9 @@
 var async = require('async');
 var db = require('../../database');
 var topics = require('../../topics');
-var utils = require('../../../public/src/utils');
+var utils = require('../../utils');
 
 module.exports = function (SocketTopics) {
-
 	SocketTopics.isTagAllowed = function (socket, data, callback) {
 		if (!data || !data.cid || !data.tag) {
 			return callback(new Error('[[error:invalid-data]]'));
@@ -20,7 +19,7 @@ module.exports = function (SocketTopics) {
 					return next(null, true);
 				}
 				next(null, tagWhitelist.indexOf(data.tag) !== -1);
-			}
+			},
 		], callback);
 	};
 
@@ -49,8 +48,8 @@ module.exports = function (SocketTopics) {
 			},
 			function (tags, next) {
 				tags = tags.filter(Boolean);
-				next(null, {tags: tags, nextStart: stop + 1});
-			}
+				next(null, { tags: tags, nextStart: stop + 1 });
+			},
 		], callback);
 	};
 };

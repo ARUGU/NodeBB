@@ -27,6 +27,7 @@
     "details.disableJoinRequests": "Искључи захтеве за придруживање",
     "details.grant": "Одобри/Поништи власништво",
     "details.kick": "Избаци",
+    "details.kick_confirm": "Да ли сте сигурни да желите да уклоните овог члана из групе?",
     "details.owner_options": "Администрација групе",
     "details.group_name": "Име групе",
     "details.member_count": "Број чланова",
@@ -52,5 +53,6 @@
     "new-group.group_name": "Име групе:",
     "upload-group-cover": "Отпреми насловницу групе",
     "bulk-invite-instructions": "Унесите списак корисничких имена одвојених зарезима да бисте позвали у ову групу ",
-    "bulk-invite": "Масовни позив"
+    "bulk-invite": "Масовни позив",
+    "remove_group_cover_confirm": "Да ли сте сигурни да желите да уклоните насловну слику?"
 }

@@ -1,8 +1,8 @@
 'use strict';
 
 var async = require('async');
+
 var db = require('../database');
-var plugins = require('../plugins');
 
 module.exports = function (User) {
 	User.ban = function (uid, until, reason, callback) {
@@ -27,7 +27,7 @@ module.exports = function (User) {
 		var tasks = [
 			async.apply(User.setUserField, uid, 'banned', 1),
 			async.apply(db.sortedSetAdd, 'users:banned', now, uid),
-			async.apply(db.sortedSetAdd, 'uid:' + uid + ':bans', now, until)
+			async.apply(db.sortedSetAdd, 'uid:' + uid + ':bans', now, until),
 		];
 
 		if (until > 0 && now < until) {
@@ -49,11 +49,11 @@ module.exports = function (User) {
 	User.unban = function (uid, callback) {
 		async.waterfall([
 			function (next) {
-				User.setUserFields(uid, {banned: 0, 'banned:expire': 0}, next);
+				User.setUserFields(uid, { banned: 0, 'banned:expire': 0 }, next);
 			},
 			function (next) {
 				db.sortedSetsRemove(['users:banned', 'users:banned:expire'], uid, next);
-			}
+			},
 		], callback);
 	};
 
@@ -61,13 +61,13 @@ module.exports = function (User) {
 		async.waterfall([
 			async.apply(User.getUserFields, uid, ['banned', 'banned:expire']),
 			function (userData, next) {
-				var banned = parseInt(userData.banned, 10) === 1;
+				var banned = userData && parseInt(userData.banned, 10) === 1;
 				if (!banned) {
 					return next(null, banned);
 				}
 
 				// If they are banned, see if the ban has expired
-				var stillBanned = !userData['banned:expire'] || Date.now() < userData['banned:expire'];
+				var stillBanned = !parseInt(userData['banned:expire'], 10) || Date.now() < parseInt(userData['banned:expire'], 10);
 
 				if (stillBanned) {
 					return next(null, true);
@@ -75,22 +75,22 @@ module.exports = function (User) {
 				async.parallel([
 					async.apply(db.sortedSetRemove.bind(db), 'users:banned:expire', uid),
 					async.apply(db.sortedSetRemove.bind(db), 'users:banned', uid),
-					async.apply(User.setUserFields, uid, {banned:0, 'banned:expire': 0})
+					async.apply(User.setUserFields, uid, { banned: 0, 'banned:expire': 0 }),
 				], function (err) {
 					next(err, false);
 				});
-			}
+			},
 		], callback);
 	};
 
 	User.getBannedReason = function (uid, callback) {
-		// Grabs the latest ban reason
-		db.getSortedSetRevRange('banned:' + uid + ':reasons', 0, 0, function (err, reasons) {
-			if (err) {
-				return callback(err);
-			}
-
-			callback(null, reasons.length ? reasons[0] : '');
-		});
+		async.waterfall([
+			function (next) {
+				db.getSortedSetRevRange('banned:' + uid + ':reasons', 0, 0, next);
+			},
+			function (reasons, next) {
+				next(null, reasons.length ? reasons[0] : '');
+			},
+		], callback);
 	};
 };

@@ -1,17 +1,23 @@
 'use strict';
-/*global require, after, before*/
 
-var	async = require('async'),
-	assert = require('assert'),
-	db = require('../mocks/databasemock');
+
+var	async = require('async');
+var assert = require('assert');
+var db = require('../mocks/databasemock');
 
 describe('List methods', function () {
-
 	describe('listAppend()', function () {
 		it('should append to a list', function (done) {
 			db.listAppend('testList1', 5, function (err) {
-				assert.equal(err, null);
+				assert.ifError(err);
 				assert.equal(arguments.length, 1);
+				done();
+			});
+		});
+
+		it('should not add anyhing if key is falsy', function (done) {
+			db.listAppend(null, 3, function (err) {
+				assert.ifError(err);
 				done();
 			});
 		});
@@ -33,9 +39,16 @@ describe('List methods', function () {
 				},
 				function (next) {
 					db.listPrepend('testList2', 1, next);
-				}
+				},
 			], function (err) {
 				assert.equal(err, null);
+				done();
+			});
+		});
+
+		it('should not add anyhing if key is falsy', function (done) {
+			db.listPrepend(null, 3, function (err) {
+				assert.ifError(err);
 				done();
 			});
 		});
@@ -52,7 +65,7 @@ describe('List methods', function () {
 				},
 				function (next) {
 					db.listAppend('testList4', 5, next);
-				}
+				},
 			], done);
 		});
 
@@ -84,6 +97,14 @@ describe('List methods', function () {
 				done();
 			});
 		});
+
+		it('should not get anything if key is falsy', function (done) {
+			db.getListRange(null, 0, -1, function (err, data) {
+				assert.ifError(err);
+				assert.equal(data, undefined);
+				done();
+			});
+		});
 	});
 
 	describe('listRemoveLast()', function () {
@@ -94,7 +115,7 @@ describe('List methods', function () {
 				},
 				function (next) {
 					db.listPrepend('testList4', 9, next);
-				}
+				},
 			], done);
 		});
 
@@ -103,6 +124,13 @@ describe('List methods', function () {
 				assert.equal(err, null);
 				assert.equal(arguments.length, 2);
 				assert.equal(lastElement, '12');
+				done();
+			});
+		});
+
+		it('should not remove anyhing if key is falsy', function (done) {
+			db.listRemoveLast(null, function (err) {
+				assert.ifError(err);
 				done();
 			});
 		});
@@ -115,7 +143,7 @@ describe('List methods', function () {
 				async.apply(db.listAppend, 'testList5', 1),
 				async.apply(db.listAppend, 'testList5', 1),
 				async.apply(db.listAppend, 'testList5', 2),
-				async.apply(db.listAppend, 'testList5', 5)
+				async.apply(db.listAppend, 'testList5', 5),
 			], done);
 		});
 
@@ -131,6 +159,13 @@ describe('List methods', function () {
 					assert.equal(list.indexOf('1'), -1);
 					done();
 				});
+			});
+		});
+
+		it('should not remove anyhing if key is falsy', function (done) {
+			db.listRemoveAll(null, 3, function (err) {
+				assert.ifError(err);
+				done();
 			});
 		});
 	});
@@ -157,10 +192,12 @@ describe('List methods', function () {
 				});
 			});
 		});
-	});
 
-
-	after(function (done) {
-		db.emptydb(done);
+		it('should not add anyhing if key is falsy', function (done) {
+			db.listTrim(null, 0, 3, function (err) {
+				assert.ifError(err);
+				done();
+			});
+		});
 	});
 });

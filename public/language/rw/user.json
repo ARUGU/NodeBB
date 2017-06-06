@@ -33,6 +33,7 @@
     "chat": "Mu Gikari",
     "chat_with": "Continue chat with %1",
     "new_chat_with": "Start new chat with %1",
+    "flag-profile": "Flag Profile",
     "follow": "Kurikira",
     "unfollow": "Ntukurikire",
     "more": "Ibindi",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "Izina ushaka kujya ukoresha twasanze ryarafashwe. Ntugire impungenge kuko twakuboneye iryo byenda kumera kimwe. Uzaba uzwi ku izina rya <strong>%1</strong>",
     "password_same_as_username": "Ijambobanga ryawe rirasa neza n'izina ukoresha; hitamo irindi jambobanga.",
     "password_same_as_email": "Ijambobanga ryawe rirasa neza na email yawe; hitamo irindi jambobanga.",
+    "weak_password": "Weak password.",
     "upload_picture": "Gushyiraho ifoto",
     "upload_a_picture": "Shyiraho ifoto",
     "remove_uploaded_picture": "Kuraho Ifoto",
     "upload_cover_picture": "Pakira ifoto yo hejuru",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "Itunganya",
     "show_email": "Hagaragazwe Email Yanjye",
     "show_fullname": "Hagaragazwe Izina Ryuzuye Ryanjye",
@@ -126,5 +131,6 @@
     "info.username-history": "Username History",
     "info.email-history": "Email History",
     "info.moderation-note": "Moderation Note",
-    "info.moderation-note.success": "Moderation note saved"
+    "info.moderation-note.success": "Moderation note saved",
+    "info.moderation-note.add": "Add note"
 }

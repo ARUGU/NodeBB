@@ -33,6 +33,7 @@
     "chat": "Vestlus",
     "chat_with": "Continue chat with %1",
     "new_chat_with": "Start new chat with %1",
+    "flag-profile": "Flag Profile",
     "follow": "Jälgi",
     "unfollow": "Ära jälgi enam",
     "more": "Rohkem",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "Kasutajanimi mida soovisid, ei olnud saadaval, seeg muutsime seda natukene. Sinu uus kasutajanimi on nüüd: <strong>%1</strong>",
     "password_same_as_username": "Su parool kattub su kasutajanimega, palun vali mõni muu parool.",
     "password_same_as_email": "Su parool kattub su e-mailiga, palun vali mõni muu parool.",
+    "weak_password": "Weak password.",
     "upload_picture": "Laadi pilt",
     "upload_a_picture": "Lae pilt üles",
     "remove_uploaded_picture": "Eemalda üleslaetud pilt",
     "upload_cover_picture": "Lae üles katte pilt",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "Seaded",
     "show_email": "Näita minu emaili",
     "show_fullname": "Näita minu täisnime",
@@ -126,5 +131,6 @@
     "info.username-history": "Username History",
     "info.email-history": "Email History",
     "info.moderation-note": "Moderation Note",
-    "info.moderation-note.success": "Moderation note saved"
+    "info.moderation-note.success": "Moderation note saved",
+    "info.moderation-note.add": "Add note"
 }

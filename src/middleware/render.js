@@ -3,12 +3,12 @@
 var async = require('async');
 var nconf = require('nconf');
 var validator = require('validator');
+var winston = require('winston');
 
 var plugins = require('../plugins');
-var translator = require('../../public/src/modules/translator');
+var translator = require('../translator');
 
 module.exports = function (middleware) {
-
 	middleware.processRender = function (req, res, next) {
 		// res.render post-processing, modified from here: https://gist.github.com/mrlannigan/5051687
 		var render = res.render;
@@ -23,11 +23,11 @@ module.exports = function (middleware) {
 			};
 
 			options = options || {};
-			if ('function' === typeof options) {
+			if (typeof options === 'function') {
 				fn = options;
 				options = {};
 			}
-			if ('function' !== typeof fn) {
+			if (typeof fn !== 'function') {
 				fn = defaultFn;
 			}
 
@@ -36,15 +36,15 @@ module.exports = function (middleware) {
 				function (next) {
 					options.loggedIn = !!req.uid;
 					options.relative_path = nconf.get('relative_path');
-					options.template = {name: template};
+					options.template = { name: template };
 					options.template[template] = true;
 					options.url = (req.baseUrl + req.path).replace(/^\/api/, '');
 					options.bodyClass = buildBodyClass(req);
 
-					plugins.fireHook('filter:' + template + '.build', {req: req, res: res, templateData: options}, next);
+					plugins.fireHook('filter:' + template + '.build', { req: req, res: res, templateData: options }, next);
 				},
 				function (data, next) {
-					plugins.fireHook('filter:middleware.render', {req: res, res: res, templateData: data.templateData}, next);
+					plugins.fireHook('filter:middleware.render', { req: res, res: res, templateData: data.templateData }, next);
 				},
 				function (data, next) {
 					options = data.templateData;
@@ -71,21 +71,24 @@ module.exports = function (middleware) {
 						},
 						footer: function (next) {
 							renderHeaderFooter('renderFooter', req, res, options, next);
-						}
+						},
 					}, next);
 				},
 				function (results, next) {
 					var str = results.header +
 						(res.locals.postHeader || '') +
-						results.content +
+						results.content + '<script id="ajaxify-data"></script>' +
 						(res.locals.preFooter || '') +
 						results.footer;
 
 					translate(str, req, res, next);
 				},
 				function (translated, next) {
-					next(null, translated + '<script id="ajaxify-data" type="application/json">' + ajaxifyData + '</script>');
-				}
+					translated = translated.replace('<script id="ajaxify-data"></script>', function () {
+						return '<script id="ajaxify-data" type="application/json">' + ajaxifyData + '</script>';
+					});
+					next(null, translated);
+				},
 			], fn);
 		};
 
@@ -103,7 +106,7 @@ module.exports = function (middleware) {
 	}
 
 	function translate(str, req, res, next) {
-		var language = res.locals.config && res.locals.config.userLang || 'en-GB';
+		var language = (res.locals.config && res.locals.config.userLang) || 'en-GB';
 		language = req.query.lang ? validator.escape(String(req.query.lang)) : language;
 		translator.translate(str, language, function (translated) {
 			next(null, translator.unescape(translated));
@@ -114,10 +117,15 @@ module.exports = function (middleware) {
 		var clean = req.path.replace(/^\/api/, '').replace(/^\/|\/$/g, '');
 		var parts = clean.split('/').slice(0, 3);
 		parts.forEach(function (p, index) {
-			p = decodeURIComponent(p);
+			try {
+				p = decodeURIComponent(p);
+			} catch (err) {
+				winston.error(err.message);
+				p = '';
+			}
+			p = validator.escape(String(p));
 			parts[index] = index ? parts[0] + '-' + p : 'page-' + (p || 'home');
 		});
 		return parts.join(' ');
 	}
-
 };

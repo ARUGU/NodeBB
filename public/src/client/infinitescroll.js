@@ -1,9 +1,7 @@
 'use strict';
 
-/* globals define, socket, app */
 
 define('forum/infinitescroll', function () {
-
 	var scroll = {};
 	var callback;
 	var previousScrollTop = 0;
@@ -23,7 +21,9 @@ define('forum/infinitescroll', function () {
 	};
 
 	function onScroll() {
-		if (loadingMore) {
+		var bsEnv = utils.findBootstrapEnvironment();
+		var mobileComposerOpen = (bsEnv === 'xs' || bsEnv === 'sm') && $('html').hasClass('composing');
+		if (loadingMore || mobileComposerOpen) {
 			return;
 		}
 		var currentScrollTop = $(window).scrollTop();
@@ -32,7 +32,8 @@ define('forum/infinitescroll', function () {
 		var offsetTop = container.offset() ? container.offset().top : 0;
 		var scrollPercent = 100 * (currentScrollTop - offsetTop) / (viewportHeight <= 0 ? wh : viewportHeight);
 
-		var top = 20, bottom = 80;
+		var top = 20;
+		var bottom = 80;
 
 		var direction = currentScrollTop > previousScrollTop ? 1 : -1;
 
@@ -53,7 +54,7 @@ define('forum/infinitescroll', function () {
 		}
 		loadingMore = true;
 
-		var hookData = {method: method, data: data};
+		var hookData = { method: method, data: data };
 		$(window).trigger('action:infinitescroll.loadmore', hookData);
 
 		socket.emit(hookData.method, hookData.data, function (err, data) {
@@ -74,8 +75,8 @@ define('forum/infinitescroll', function () {
 
 		var removeCount = els.length - count;
 		if (direction > 0) {
-			var height = $(document).height(),
-				scrollTop = $(window).scrollTop();
+			var height = $(document).height();
+			var scrollTop = $(window).scrollTop();
 
 			els.slice(0, removeCount).remove();
 

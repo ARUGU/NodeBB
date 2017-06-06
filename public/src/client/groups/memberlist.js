@@ -1,13 +1,14 @@
-"use strict";
-/* globals define, socket, ajaxify, app */
+'use strict';
 
-define('forum/groups/memberlist', ['components', 'forum/infinitescroll'], function (components, infinitescroll) {
 
+define('forum/groups/memberlist', ['components', 'forum/infinitescroll'], function () {
 	var MemberList = {};
 	var searchInterval;
 	var groupName;
+	var templateName;
 
-	MemberList.init = function () {
+	MemberList.init = function (_templateName) {
+		templateName = _templateName || 'groups/details';
 		groupName = ajaxify.data.group.name;
 
 		handleMemberSearch();
@@ -23,7 +24,7 @@ define('forum/groups/memberlist', ['components', 'forum/infinitescroll'], functi
 			}
 
 			searchInterval = setTimeout(function () {
-				socket.emit('groups.searchMembers', {groupName: groupName, query: query}, function (err, results) {
+				socket.emit('groups.searchMembers', { groupName: groupName, query: query }, function (err, results) {
 					if (err) {
 						return app.alertError(err.message);
 					}
@@ -56,7 +57,7 @@ define('forum/groups/memberlist', ['components', 'forum/infinitescroll'], functi
 		members.attr('loading', 1);
 		socket.emit('groups.loadMoreMembers', {
 			groupName: groupName,
-			after: members.attr('data-nextstart')
+			after: members.attr('data-nextstart'),
 		}, function (err, data) {
 			if (err) {
 				return app.alertError(err.message);
@@ -85,11 +86,11 @@ define('forum/groups/memberlist', ['components', 'forum/infinitescroll'], functi
 	}
 
 	function parseAndTranslate(users, callback) {
-		app.parseAndTranslate('groups/details', 'members', {
+		app.parseAndTranslate(templateName, 'members', {
 			group: {
 				members: users,
-				isOwner: ajaxify.data.group.isOwner
-			}
+				isOwner: ajaxify.data.group.isOwner,
+			},
 		}, callback);
 	}
 

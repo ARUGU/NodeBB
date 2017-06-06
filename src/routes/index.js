@@ -1,9 +1,10 @@
-"use strict";
+'use strict';
 
 var nconf = require('nconf');
 var winston = require('winston');
 var path = require('path');
 var async = require('async');
+var meta = require('../meta');
 var controllers = require('../controllers');
 var plugins = require('../plugins');
 var user = require('../user');
@@ -14,7 +15,6 @@ var metaRoutes = require('./meta');
 var apiRoutes = require('./api');
 var adminRoutes = require('./admin');
 var feedRoutes = require('./feeds');
-var pluginRoutes = require('./plugins');
 var authRoutes = require('./authentication');
 var helpers = require('./helpers');
 
@@ -34,13 +34,11 @@ function mainRoutes(app, middleware, controllers) {
 	setupPageRoute(app, '/search', middleware, [], controllers.search.search);
 	setupPageRoute(app, '/reset/:code?', middleware, [], controllers.reset);
 	setupPageRoute(app, '/tos', middleware, [], controllers.termsOfUse);
-
-	app.get('/ping', controllers.ping);
-	app.get('/sping', controllers.ping);
 }
 
 function modRoutes(app, middleware, controllers) {
-	setupPageRoute(app, '/posts/flags', middleware, [], controllers.mods.flagged);
+	setupPageRoute(app, '/flags', middleware, [], controllers.mods.flags.list);
+	setupPageRoute(app, '/flags/:flagId', middleware, [], controllers.mods.flags.detail);
 }
 
 function globalModRoutes(app, middleware, controllers) {
@@ -85,11 +83,11 @@ function groupRoutes(app, middleware, controllers) {
 	setupPageRoute(app, '/groups/:slug/members', middleware, middlewares, controllers.groups.members);
 }
 
-module.exports = function (app, middleware, hotswapIds) {
+module.exports = function (app, middleware, hotswapIds, callback) {
 	var routers = [
 		express.Router(),	// plugin router
 		express.Router(),	// main app router
-		express.Router()	// auth router
+		express.Router(),	// auth router
 	];
 	var router = routers[1];
 	var pluginRouter = routers[0];
@@ -97,8 +95,11 @@ module.exports = function (app, middleware, hotswapIds) {
 	var relativePath = nconf.get('relative_path');
 	var ensureLoggedIn = require('connect-ensure-login');
 
+	var idx;
+	var x;
+
 	if (Array.isArray(hotswapIds) && hotswapIds.length) {
-		for(var idx,x = 0; x < hotswapIds.length; x++) {
+		for (x = 0; x < hotswapIds.length; x += 1) {
 			idx = routers.push(express.Router()) - 1;
 			routers[idx].hotswapId = hotswapIds[x];
 		}
@@ -116,13 +117,10 @@ module.exports = function (app, middleware, hotswapIds) {
 	app.all(relativePath + '(/api/admin|/api/admin/*?)', middleware.isAdmin);
 	app.all(relativePath + '(/admin|/admin/*?)', ensureLoggedIn.ensureLoggedIn(nconf.get('relative_path') + '/login?local=1'), middleware.applyCSRF, middleware.isAdmin);
 
-	app.use(middleware.maintenanceMode);
-
 	adminRoutes(router, middleware, controllers);
 	metaRoutes(router, middleware, controllers);
 	apiRoutes(router, middleware, controllers);
 	feedRoutes(router, middleware, controllers);
-	pluginRoutes(router, middleware, controllers);
 
 	mainRoutes(router, middleware, controllers);
 	topicRoutes(router, middleware, controllers);
@@ -135,7 +133,7 @@ module.exports = function (app, middleware, hotswapIds) {
 	userRoutes(router, middleware, controllers);
 	groupRoutes(router, middleware, controllers);
 
-	for(var x = 0; x < routers.length; x++) {
+	for (x = 0; x < routers.length; x += 1) {
 		app.use(relativePath, routers[x]);
 	}
 
@@ -144,24 +142,74 @@ module.exports = function (app, middleware, hotswapIds) {
 	}
 
 	app.use(middleware.privateUploads);
-	app.use(relativePath + '/api/language/:language/:namespace', middleware.getTranslation);
-	app.use(relativePath, express.static(path.join(__dirname, '../../', 'public'), {
-		maxAge: app.enabled('cache') ? 5184000000 : 0
-	}));
-	app.use(relativePath + '/vendor/jquery/timeago/locales', middleware.processTimeagoLocales);
-	app.use(controllers.handle404);
-	app.use(controllers.handleURIErrors);
-	app.use(controllers.handleErrors);
+
+	var statics = [
+		{ route: '/assets', path: path.join(__dirname, '../../build/public') },
+		{ route: '/assets', path: path.join(__dirname, '../../public') },
+		{ route: '/plugins', path: path.join(__dirname, '../../build/public/plugins') },
+	];
+	var staticOptions = {
+		maxAge: app.enabled('cache') ? 5184000000 : 0,
+	};
+
+	if (path.resolve(__dirname, '../../public/uploads') !== nconf.get('upload_path')) {
+		statics.unshift({ route: '/assets/uploads', path: nconf.get('upload_path') });
+	}
+
+	statics.forEach(function (obj) {
+		app.use(relativePath + obj.route, express.static(obj.path, staticOptions));
+	});
+	app.use(relativePath + '/uploads', function (req, res) {
+		res.redirect(relativePath + '/assets/uploads' + req.path + '?' + meta.config['cache-buster']);
+	});
+
+	// DEPRECATED
+	var deprecatedPaths = [
+		'/nodebb.min.js',
+		'/acp.min.js',
+		'/stylesheet.css',
+		'/js-enabled.css',
+		'/admin.css',
+		'/logo.png',
+		'/favicon.ico',
+		'/vendor/',
+		'/templates/',
+		'/src/',
+		'/images/',
+		'/language/',
+		'/sounds/',
+	];
+	app.use(relativePath, function (req, res, next) {
+		if (deprecatedPaths.some(function (path) { return req.path.startsWith(path); })) {
+			winston.warn('[deprecated] Accessing `' + req.path.slice(1) + '` from `/` is deprecated. ' +
+				'Use `/assets' + req.path + '` to access this file.');
+			res.redirect(relativePath + '/assets' + req.path + '?' + meta.config['cache-buster']);
+		} else {
+			next();
+		}
+	});
+	// DEPRECATED
+	app.use(relativePath + '/api/language', function (req, res) {
+		winston.warn('[deprecated] Accessing language files from `/api/language` is deprecated. ' +
+			'Use `/assets/language' + req.path + '.json` for prefetch paths.');
+		res.redirect(relativePath + '/assets/language' + req.path + '.json?' + meta.config['cache-buster']);
+	});
+
+	app.use(relativePath + '/assets/vendor/jquery/timeago/locales', middleware.processTimeagoLocales);
+	app.use(controllers['404'].handle404);
+	app.use(controllers.errors.handleURIErrors);
+	app.use(controllers.errors.handleErrors);
 
 	// Add plugin routes
 	async.series([
 		async.apply(plugins.reloadRoutes),
 		async.apply(authRoutes.reloadRoutes),
-		async.apply(user.addInterstitials)
+		async.apply(user.addInterstitials),
+		function (next) {
+			winston.info('Routes added');
+			next();
+		},
 	], function (err) {
-		if (err) {
-			return winston.error(err);
-		}
-		winston.info('Routes added');
+		callback(err);
 	});
 };

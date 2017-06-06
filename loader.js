@@ -1,29 +1,30 @@
 'use strict';
 
-var	nconf = require('nconf'),
-	fs = require('fs'),
-	url = require('url'),
-	path = require('path'),
-	fork = require('child_process').fork,
+var	nconf = require('nconf');
+var fs = require('fs');
+var url = require('url');
+var path = require('path');
+var fork = require('child_process').fork;
+var async = require('async');
+var logrotate = require('logrotate-stream');
 
-	async = require('async'),
-	logrotate = require('logrotate-stream'),
-	file = require('./src/file'),
-	pkg = require('./package.json');
+var file = require('./src/file');
+var pkg = require('./package.json');
 
 nconf.argv().env().file({
-	file: path.join(__dirname, '/config.json')
+	file: path.join(__dirname, 'config.json'),
 });
 
-var	pidFilePath = __dirname + '/pidfile',
-	output = logrotate({ file: __dirname + '/logs/output.log', size: '1m', keep: 3, compress: true }),
-	silent = nconf.get('silent') === 'false' ? false : nconf.get('silent') !== false,
-	numProcs,
-	workers = [],
-
-	Loader = {
-		timesStarted: 0
-	};
+var	pidFilePath = path.join(__dirname, 'pidfile');
+var outputLogFilePath = path.join(__dirname, 'logs/output.log');
+var output = logrotate({ file: outputLogFilePath, size: '1m', keep: 3, compress: true });
+var silent = nconf.get('silent') === 'false' ? false : nconf.get('silent') !== false;
+var numProcs;
+var workers = [];
+var Loader = {
+	timesStarted: 0,
+};
+var appPath = path.join(__dirname, 'app.js');
 
 Loader.init = function (callback) {
 	if (silent) {
@@ -50,11 +51,10 @@ Loader.displayStartupMessages = function (callback) {
 };
 
 Loader.addWorkerEvents = function (worker) {
-
 	worker.on('exit', function (code, signal) {
 		if (code !== 0) {
 			if (Loader.timesStarted < numProcs * 3) {
-				Loader.timesStarted++;
+				Loader.timesStarted += 1;
 				if (Loader.crashTimer) {
 					clearTimeout(Loader.crashTimer);
 				}
@@ -62,7 +62,7 @@ Loader.addWorkerEvents = function (worker) {
 					Loader.timesStarted = 0;
 				}, 10000);
 			} else {
-				console.log(numProcs * 3 + ' restarts in 10 seconds, most likely an error on startup. Halting.');
+				console.log((numProcs * 3) + ' restarts in 10 seconds, most likely an error on startup. Halting.');
 				process.exit();
 			}
 		}
@@ -78,13 +78,13 @@ Loader.addWorkerEvents = function (worker) {
 	worker.on('message', function (message) {
 		if (message && typeof message === 'object' && message.action) {
 			switch (message.action) {
-				case 'restart':
-					console.log('[cluster] Restarting...');
-					Loader.restart();
+			case 'restart':
+				console.log('[cluster] Restarting...');
+				Loader.restart();
 				break;
-				case 'reload':
-					console.log('[cluster] Reloading...');
-					Loader.reload();
+			case 'reload':
+				console.log('[cluster] Reloading...');
+				Loader.reload();
 				break;
 			}
 		}
@@ -95,7 +95,7 @@ Loader.start = function (callback) {
 	numProcs = getPorts().length;
 	console.log('Clustering enabled: Spinning up ' + numProcs + ' process(es).\n');
 
-	for (var x = 0; x < numProcs; ++x) {
+	for (var x = 0; x < numProcs; x += 1) {
 		forkWorker(x, x === 0);
 	}
 
@@ -108,17 +108,17 @@ function forkWorker(index, isPrimary) {
 	var ports = getPorts();
 	var args = [];
 
-	if(!ports[index]) {
+	if (!ports[index]) {
 		return console.log('[cluster] invalid port for worker : ' + index + ' ports: ' + ports.length);
 	}
 
 	process.env.isPrimary = isPrimary;
-	process.env.isCluster = ports.length > 1 ? true : false;
+	process.env.isCluster = ports.length > 1;
 	process.env.port = ports[index];
 
-	var worker = fork('app.js', args, {
+	var worker = fork(appPath, args, {
 		silent: silent,
-		env: process.env
+		env: process.env,
 	});
 
 	worker.index = index;
@@ -129,7 +129,7 @@ function forkWorker(index, isPrimary) {
 	Loader.addWorkerEvents(worker);
 
 	if (silent) {
-		var output = logrotate({ file: __dirname + '/logs/output.log', size: '1m', keep: 3, compress: true });
+		var output = logrotate({ file: outputLogFilePath, size: '1m', keep: 3, compress: true });
 		worker.stdout.pipe(output);
 		worker.stderr.pipe(output);
 	}
@@ -151,15 +151,31 @@ function getPorts() {
 
 Loader.restart = function () {
 	killWorkers();
+
+	var pathToConfig = path.join(__dirname, '/config.json');
 	nconf.remove('file');
-	nconf.use('file', { file: path.join(__dirname, '/config.json') });
-	Loader.start();
+	nconf.use('file', { file: pathToConfig });
+
+	fs.readFile(pathToConfig, { encoding: 'utf-8' }, function (err, configFile) {
+		if (err) {
+			console.log('Error reading config : ' + err.message);
+			process.exit();
+		}
+
+		var conf = JSON.parse(configFile);
+
+		nconf.stores.env.readOnly = false;
+		nconf.set('url', conf.url);
+		nconf.stores.env.readOnly = true;
+
+		Loader.start();
+	});
 };
 
 Loader.reload = function () {
 	workers.forEach(function (worker) {
 		worker.send({
-			action: 'reload'
+			action: 'reload',
 		});
 	});
 };
@@ -168,7 +184,7 @@ Loader.stop = function () {
 	killWorkers();
 
 	// Clean up the pidfile
-	fs.unlinkSync(__dirname + '/pidfile');
+	fs.unlinkSync(pidFilePath);
 };
 
 function killWorkers() {
@@ -206,16 +222,16 @@ fs.open(path.join(__dirname, 'config.json'), 'r', function (err) {
 
 			require('daemon')({
 				stdout: process.stdout,
-				stderr: process.stderr
+				stderr: process.stderr,
 			});
 
-			fs.writeFile(__dirname + '/pidfile', process.pid);
+			fs.writeFileSync(pidFilePath, process.pid);
 		}
 
 		async.series([
 			Loader.init,
 			Loader.displayStartupMessages,
-			Loader.start
+			Loader.start,
 		], function (err) {
 			if (err) {
 				console.log('[loader] Error during startup: ' + err.message);
@@ -223,6 +239,6 @@ fs.open(path.join(__dirname, 'config.json'), 'r', function (err) {
 		});
 	} else {
 		// No config detected, kickstart web installer
-		var child = require('child_process').fork('app');
+		require('child_process').fork('app');
 	}
 });

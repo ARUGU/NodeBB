@@ -2,6 +2,7 @@
 
 
 var async = require('async');
+var nconf = require('nconf');
 var meta = require('../../meta');
 
 var settingsController = module.exports;
@@ -10,12 +11,12 @@ settingsController.get = function (req, res, next) {
 	var term = req.params.term ? req.params.term : 'general';
 
 	switch (req.params.term) {
-		case 'email':
-			renderEmail(req, res, next);
-			break;
+	case 'email':
+		renderEmail(req, res, next);
+		break;
 
-		default:
-			res.render('admin/settings/' + term);
+	default:
+		res.render('admin/settings/' + term);
 	}
 };
 
@@ -23,13 +24,13 @@ settingsController.get = function (req, res, next) {
 function renderEmail(req, res, next) {
 	var fs = require('fs');
 	var path = require('path');
-	var utils = require('../../../public/src/utils');
+	var file = require('../../file');
 
-	var emailsPath = path.join(__dirname, '../../../public/templates/emails');
+	var emailsPath = path.join(nconf.get('views_dir'), 'emails');
 
 	async.waterfall([
 		function (next) {
-			utils.walk(emailsPath, next);
+			file.walk(emailsPath, next);
 		},
 		function (emails, next) {
 			async.map(emails, function (email, next) {
@@ -46,11 +47,11 @@ function renderEmail(req, res, next) {
 						path: path,
 						fullpath: email,
 						text: text,
-						original: original.toString()
+						original: original.toString(),
 					});
 				});
 			}, next);
-		}
+		},
 	], function (err, emails) {
 		if (err) {
 			return next(err);
@@ -60,7 +61,7 @@ function renderEmail(req, res, next) {
 			emails: emails,
 			sendable: emails.filter(function (email) {
 				return email.path.indexOf('_plaintext') === -1 && email.path.indexOf('partials') === -1;
-			})
+			}),
 		});
 	});
 }

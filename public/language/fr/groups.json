@@ -27,6 +27,7 @@
     "details.disableJoinRequests": "Désactiver les demandes d'adhésion",
     "details.grant": "Promouvoir/rétrograder comme propriétaire",
     "details.kick": "Exclure",
+    "details.kick_confirm": "Voulez-vous vraiment supprimer ce membre du groupe ?",
     "details.owner_options": "Administration du groupe",
     "details.group_name": "Nom du groupe",
     "details.member_count": "Nombre de membres",
@@ -52,5 +53,6 @@
     "new-group.group_name": "Nom du groupe :",
     "upload-group-cover": "Envoyer une image de groupe",
     "bulk-invite-instructions": "Entrez une liste de nom d'utilisateurs séparés par des virgules pour les inviter à rejoindre ce groupe.",
-    "bulk-invite": "Invitation multiple"
+    "bulk-invite": "Invitation multiple",
+    "remove_group_cover_confirm": "Êtes-vous sûr de vouloir supprimer l'image de couverture ?"
 }

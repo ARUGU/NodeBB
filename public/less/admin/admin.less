@@ -1,5 +1,6 @@
-@import "./bootstrap/bootstrap";
-@import "./bootswatch";
+@import "bootstrap/less/bootstrap";
+@import "./paper/variables";
+@import "./paper/bootswatch";
 @import "./mixins";
 @import "./vars";
 
@@ -146,7 +147,7 @@ body {
 				color: @gray-dark;
 
 				&:hover, &.selected {
-					background: black;
+					background: @brand-primary;
 					color: white;
 				}
 			}
@@ -231,6 +232,11 @@ body {
 	}
 }
 
+.category-dropdown-menu {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
 .table-reordering {
 	tr:hover {
 		cursor: move;
@@ -272,4 +278,8 @@ body {
 	border: 1px dashed @brand-success;
 	background: lighten(@brand-success, 10%);
 	opacity: 0.5;
+}
+
+form small {
+	color: @gray-light;
 }

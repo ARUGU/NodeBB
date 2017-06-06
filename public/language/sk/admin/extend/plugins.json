@@ -1,6 +1,6 @@
 {
-	"installed": "Installed",
-	"active": "Active",
+	"installed": "Nainštalovaný",
+	"active": "Aktívny",
 	"inactive": "Inactive",
 	"out-of-date": "Out of Date",
 	"none-found": "No plugins found.",
@@ -20,6 +20,7 @@
 	"plugin-item.themes": "Themes",
 	"plugin-item.deactivate": "Deactivate",
 	"plugin-item.activate": "Activate",
+	"plugin-item.install": "Install",
 	"plugin-item.uninstall": "Uninstall",
 	"plugin-item.settings": "Settings",
 	"plugin-item.installed": "Installed",

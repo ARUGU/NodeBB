@@ -4,10 +4,10 @@ var fs = require('fs');
 var path = require('path');
 var async = require('async');
 var sanitizeHTML = require('sanitize-html');
+var nconf = require('nconf');
 
-var languages = require('../languages');
-var utils = require('../../public/src/utils');
-var Translator = require('../../public/src/modules/translator').Translator;
+var file = require('../file');
+var Translator = require('../translator').Translator;
 
 function filterDirectories(directories) {
 	return directories.map(function (dir) {
@@ -19,12 +19,12 @@ function filterDirectories(directories) {
 		// exclude category.tpl, group.tpl, category-analytics.tpl
 		return !dir.includes('/partials/') &&
 			/\/.*\//.test(dir) &&
-			!/category|group|category\-analytics$/.test(dir);
+			!/manage\/(category|group|category-analytics)$/.test(dir);
 	});
 }
 
 function getAdminNamespaces(callback) {
-	utils.walk(path.resolve(__dirname, '../../public/templates/admin'), function (err, directories) {
+	file.walk(path.resolve(nconf.get('views_dir'), 'admin'), function (err, directories) {
 		if (err) {
 			return callback(err);
 		}
@@ -45,7 +45,7 @@ function sanitize(html) {
 function simplify(translations) {
 	return translations
 		// remove all mustaches
-		.replace(/(?:\{{1,2}[^\}]*?\}{1,2})/g, '')
+		.replace(/(?:\{{1,2}[^}]*?\}{1,2})/g, '')
 		// collapse whitespace
 		.replace(/(?:[ \t]*[\n\r]+[ \t]*)+/g, '\n')
 		.replace(/[\t ]+/g, ' ');
@@ -61,7 +61,7 @@ var fallbackCacheInProgress = {};
 var fallbackCache = {};
 
 function initFallback(namespace, callback) {
-	fs.readFile(path.resolve(__dirname, '../../public/templates/', namespace + '.tpl'), function (err, file) {
+	fs.readFile(path.resolve(nconf.get('views_dir'), namespace + '.tpl'), function (err, file) {
 		if (err) {
 			return callback(err);
 		}
@@ -107,6 +107,8 @@ function fallback(namespace, callback) {
 }
 
 function initDict(language, callback) {
+	var translator = Translator.create(language);
+
 	getAdminNamespaces(function (err, namespaces) {
 		if (err) {
 			return callback(err);
@@ -115,7 +117,9 @@ function initDict(language, callback) {
 		async.map(namespaces, function (namespace, cb) {
 			async.waterfall([
 				function (next) {
-					languages.get(language, namespace, next);
+					translator.getTranslation(namespace).then(function (translations) {
+						next(null, translations);
+					}, next);
 				},
 				function (translations, next) {
 					if (!translations || !Object.keys(translations).length) {
@@ -133,13 +137,13 @@ function initDict(language, callback) {
 						title = '[[admin/menu:general/dashboard]]';
 					} else {
 						title = title.match(/admin\/(.+?)\/(.+?)$/);
-						title = '[[admin/menu:section-' + 
+						title = '[[admin/menu:section-' +
 							(title[1] === 'development' ? 'advanced' : title[1]) +
 							']]' + (title[2] ? (' > [[admin/menu:' +
 							title[1] + '/' + title[2] + ']]') : '');
 					}
 
-					Translator.create(language).translate(title).then(function (title) {
+					translator.translate(title).then(function (title) {
 						next(null, {
 							namespace: namespace,
 							translations: str + '\n' + title,

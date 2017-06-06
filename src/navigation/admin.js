@@ -1,14 +1,12 @@
-"use strict";
-
-
+'use strict';
 
 var async = require('async');
 var plugins = require('../plugins');
 var db = require('../database');
-var translator = require('../../public/src/modules/translator');
+var translator = require('../translator');
 var pubsub = require('../pubsub');
 
-var admin = {};
+var admin = module.exports;
 admin.cache = null;
 
 pubsub.on('admin:navigation:save', function () {
@@ -38,29 +36,30 @@ admin.save = function (data, callback) {
 		},
 		function (next) {
 			db.sortedSetAdd('navigation:enabled', order, items, next);
-		}
+		},
 	], callback);
 };
 
 admin.getAdmin = function (callback) {
 	async.parallel({
 		enabled: admin.get,
-		available: getAvailable
+		available: getAvailable,
 	}, callback);
 };
 
 admin.get = function (callback) {
-	db.getSortedSetRange('navigation:enabled', 0, -1, function (err, data) {
-		if (err) {
-			return callback(err);
-		}
+	async.waterfall([
+		function (next) {
+			db.getSortedSetRange('navigation:enabled', 0, -1, next);
+		},
+		function (data, next) {
+			data = data.map(function (item, idx) {
+				return JSON.parse(item)[idx];
+			});
 
-		data = data.map(function (item, idx) {
-			return JSON.parse(item)[idx];
-		});
-
-		callback(null, data);
-	});
+			next(null, data);
+		},
+	], callback);
 };
 
 function getAvailable(callback) {
@@ -71,5 +70,3 @@ function getAvailable(callback) {
 
 	plugins.fireHook('filter:navigation.available', core, callback);
 }
-
-module.exports = admin;

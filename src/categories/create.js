@@ -6,10 +6,9 @@ var db = require('../database');
 var groups = require('../groups');
 var plugins = require('../plugins');
 var privileges = require('../privileges');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
 
 module.exports = function (Categories) {
-
 	Categories.create = function (data, callback) {
 		var category;
 		var parentCid = data.parentCid ? data.parentCid : 0;
@@ -38,13 +37,17 @@ module.exports = function (Categories) {
 					post_count: 0,
 					disabled: 0,
 					order: order,
-					link: '',
+					link: data.link || '',
 					numRecentReplies: 1,
-					class: ( data.class ? data.class : 'col-md-3 col-xs-6' ),
-					imageClass: 'cover'
+					class: (data.class ? data.class : 'col-md-3 col-xs-6'),
+					imageClass: 'cover',
 				};
 
-				plugins.fireHook('filter:category.create', {category: category, data: data}, next);
+				if (data.backgroundImage) {
+					category.backgroundImage = data.backgroundImage;
+				}
+
+				plugins.fireHook('filter:category.create', { category: category, data: data }, next);
 			},
 			function (data, next) {
 				category = data.category;
@@ -63,7 +66,7 @@ module.exports = function (Categories) {
 					async.apply(db.sortedSetAdd, 'cid:' + parentCid + ':children', category.order, category.cid),
 					async.apply(privileges.categories.give, defaultPrivileges, category.cid, 'administrators'),
 					async.apply(privileges.categories.give, defaultPrivileges, category.cid, 'registered-users'),
-					async.apply(privileges.categories.give, ['find', 'read', 'topics:read'], category.cid, 'guests')
+					async.apply(privileges.categories.give, ['find', 'read', 'topics:read'], category.cid, 'guests'),
 				], next);
 			},
 			function (results, next) {
@@ -73,9 +76,9 @@ module.exports = function (Categories) {
 				next(null, category);
 			},
 			function (category, next) {
-				plugins.fireHook('action:category.create', category);
+				plugins.fireHook('action:category.create', { category: category });
 				next(null, category);
-			}
+			},
 		], callback);
 	};
 
@@ -93,7 +96,7 @@ module.exports = function (Categories) {
 			function (next) {
 				async.parallel({
 					source: async.apply(db.getObject, 'category:' + fromCid),
-					destination: async.apply(db.getObject, 'category:' + toCid)
+					destination: async.apply(db.getObject, 'category:' + toCid),
 				}, next);
 			},
 			function (results, next) {
@@ -132,16 +135,27 @@ module.exports = function (Categories) {
 			},
 			function (results, next) {
 				Categories.copyPrivilegesFrom(fromCid, toCid, next);
-			}
+			},
 		], function (err) {
 			callback(err, destination);
 		});
 	};
 
 	Categories.copyPrivilegesFrom = function (fromCid, toCid, callback) {
-		async.each(privileges.privilegeList, function (privilege, next) {
-			copyPrivilege(privilege, fromCid, toCid, next);
-		}, callback);
+		async.waterfall([
+			function (next) {
+				plugins.fireHook('filter:categories.copyPrivilegesFrom', {
+					privileges: privileges.privilegeList,
+					fromCid: fromCid,
+					toCid: toCid,
+				}, next);
+			},
+			function (data, next) {
+				async.each(data.privileges, function (privilege, next) {
+					copyPrivilege(privilege, data.fromCid, data.toCid, next);
+				}, next);
+			},
+		], callback);
 	};
 
 	function copyPrivilege(privilege, fromCid, toCid, callback) {
@@ -165,8 +179,7 @@ module.exports = function (Categories) {
 				async.eachSeries(members, function (member, next) {
 					groups.join('cid:' + toCid + ':privileges:' + privilege, member, next);
 				}, next);
-			}
+			},
 		], callback);
 	}
-
 };

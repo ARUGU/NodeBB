@@ -1,19 +1,23 @@
 
-
 'use strict';
 
 var async = require('async');
 var S = require('string');
+var winston = require('winston');
 
 var meta = require('../meta');
 var user = require('../user');
 var posts = require('../posts');
 var plugins = require('../plugins');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
 
 module.exports = function (Topics) {
-
-	Topics.getTeasers = function (topics, callback) {
+	Topics.getTeasers = function (topics, uid, callback) {
+		if (typeof uid === 'function') {
+			winston.warn('[Topics.getTeasers] this usage is deprecated please provide uid');
+			callback = uid;
+			uid = 0;
+		}
 		if (!Array.isArray(topics) || !topics.length) {
 			return callback(null, []);
 		}
@@ -30,19 +34,19 @@ module.exports = function (Topics) {
 					delete topic.teaserPid;
 				}
 
-				switch(meta.config.teaserPost) {
-					case 'first':
-						teaserPids.push(topic.mainPid);
-						break;
+				switch (meta.config.teaserPost) {
+				case 'first':
+					teaserPids.push(topic.mainPid);
+					break;
 
-					case 'last-post':
-						teaserPids.push(topic.teaserPid || topic.mainPid);
-						break;
+				case 'last-post':
+					teaserPids.push(topic.teaserPid || topic.mainPid);
+					break;
 
-					case 'last-reply':	// intentional fall-through
-					default:
-						teaserPids.push(topic.teaserPid);
-						break;
+				case 'last-reply':	// intentional fall-through
+				default:
+					teaserPids.push(topic.teaserPid);
+					break;
 				}
 			}
 		});
@@ -95,46 +99,57 @@ module.exports = function (Topics) {
 					return tidToPost[topic.tid];
 				});
 
-				plugins.fireHook('filter:teasers.get', {teasers: teasers}, next);
+				plugins.fireHook('filter:teasers.get', { teasers: teasers, uid: uid }, next);
 			},
 			function (data, next) {
 				next(null, data.teasers);
-			}
+			},
 		], callback);
 	};
 
-	Topics.getTeasersByTids = function (tids, callback) {
+	Topics.getTeasersByTids = function (tids, uid, callback) {
+		if (typeof uid === 'function') {
+			winston.warn('[Topics.getTeasersByTids] this usage is deprecated please provide uid');
+			callback = uid;
+			uid = 0;
+		}
 		if (!Array.isArray(tids) || !tids.length) {
 			return callback(null, []);
 		}
 		async.waterfall([
 			function (next) {
-				Topics.getTopicsFields(tids, ['tid', 'postcount', 'teaserPid'], next);
+				Topics.getTopicsFields(tids, ['tid', 'postcount', 'teaserPid', 'mainPid'], next);
 			},
 			function (topics, next) {
-				Topics.getTeasers(topics, next);
-			}
+				Topics.getTeasers(topics, uid, next);
+			},
 		], callback);
 	};
 
-	Topics.getTeaser = function (tid, callback) {
-		Topics.getTeasersByTids([tid], function (err, teasers) {
+	Topics.getTeaser = function (tid, uid, callback) {
+		if (typeof uid === 'function') {
+			winston.warn('[Topics.getTeaser] this usage is deprecated please provide uid');
+			callback = uid;
+			uid = 0;
+		}
+		Topics.getTeasersByTids([tid], uid, function (err, teasers) {
 			callback(err, Array.isArray(teasers) && teasers.length ? teasers[0] : null);
 		});
 	};
 
 	Topics.updateTeaser = function (tid, callback) {
-		Topics.getLatestUndeletedReply(tid, function (err, pid) {
-			if (err) {
-				return callback(err);
-			}
-
-			pid = pid || null;
-			if (pid) {
-				Topics.setTopicField(tid, 'teaserPid', pid, callback);
-			} else {
-				Topics.deleteTopicField(tid, 'teaserPid', callback);
-			}
-		});
+		async.waterfall([
+			function (next) {
+				Topics.getLatestUndeletedReply(tid, next);
+			},
+			function (pid, next) {
+				pid = pid || null;
+				if (pid) {
+					Topics.setTopicField(tid, 'teaserPid', pid, next);
+				} else {
+					Topics.deleteTopicField(tid, 'teaserPid', next);
+				}
+			},
+		], callback);
 	};
 };

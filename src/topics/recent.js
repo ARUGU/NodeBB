@@ -7,20 +7,21 @@ var db = require('../database');
 var plugins = require('../plugins');
 var privileges = require('../privileges');
 var user = require('../user');
-var categories =  require('../categories');
+var categories = require('../categories');
+var meta = require('../meta');
 
 module.exports = function (Topics) {
 	var terms = {
 		day: 86400000,
 		week: 604800000,
 		month: 2592000000,
-		year: 31104000000
+		year: 31104000000,
 	};
 
 	Topics.getRecentTopics = function (cid, uid, start, stop, filter, callback) {
 		var recentTopics = {
-			nextStart : 0,
-			topics: []
+			nextStart: 0,
+			topics: [],
 		};
 
 		async.waterfall([
@@ -43,7 +44,7 @@ module.exports = function (Topics) {
 				recentTopics.topics = topicData;
 				recentTopics.nextStart = stop + 1;
 				next(null, recentTopics);
-			}
+			},
 		], callback);
 	};
 
@@ -65,28 +66,27 @@ module.exports = function (Topics) {
 			function (tids, next) {
 				async.parallel({
 					ignoredCids: function (next) {
-						if (filter === 'watched') {
+						if (filter === 'watched' || parseInt(meta.config.disableRecentCategoryFilter, 10) === 1) {
 							return next(null, []);
 						}
 						user.getIgnoredCategories(uid, next);
 					},
 					topicData: function (next) {
 						Topics.getTopicsFields(tids, ['tid', 'cid'], next);
-					}
+					},
 				}, next);
 			},
 			function (results, next) {
 				tids = results.topicData.filter(function (topic) {
 					if (topic) {
 						return results.ignoredCids.indexOf(topic.cid.toString()) === -1;
-					} else {
-						return false;
 					}
+					return false;
 				}).map(function (topic) {
 					return topic.tid;
 				});
 				next(null, tids);
-			}
+			},
 		], callback);
 	}
 
@@ -100,8 +100,8 @@ module.exports = function (Topics) {
 				Topics.getTopics(tids, uid, next);
 			},
 			function (topics, next) {
-				next(null, {topics: topics, nextStart: stop + 1});
-			}
+				next(null, { topics: topics, nextStart: stop + 1 });
+			},
 		], callback);
 	};
 
@@ -128,12 +128,12 @@ module.exports = function (Topics) {
 							return next();
 						}
 						Topics.updateRecent(tid, timestamp, next);
-					}
+					},
 				], next);
 			},
 			function (next) {
 				Topics.setTopicField(tid, 'lastposttime', timestamp, next);
-			}
+			},
 		], function (err) {
 			callback(err);
 		});
@@ -141,19 +141,22 @@ module.exports = function (Topics) {
 
 	Topics.updateRecent = function (tid, timestamp, callback) {
 		callback = callback || function () {};
-		if (plugins.hasListeners('filter:topics.updateRecent')) {
-			plugins.fireHook('filter:topics.updateRecent', {tid: tid, timestamp: timestamp}, function (err, data) {
-				if (err) {
-					return callback(err);
-				}
-				if (data && data.tid && data.timestamp) {
-					db.sortedSetAdd('topics:recent', data.timestamp, data.tid, callback);
+
+		async.waterfall([
+			function (next) {
+				if (plugins.hasListeners('filter:topics.updateRecent')) {
+					plugins.fireHook('filter:topics.updateRecent', { tid: tid, timestamp: timestamp }, next);
 				} else {
-					callback();
+					next(null, { tid: tid, timestamp: timestamp });
 				}
-			});
-		} else {
-			db.sortedSetAdd('topics:recent', timestamp, tid, callback);
-		}
+			},
+			function (data, next) {
+				if (data && data.tid && data.timestamp) {
+					db.sortedSetAdd('topics:recent', data.timestamp, data.tid, next);
+				} else {
+					next();
+				}
+			},
+		], callback);
 	};
 };

@@ -1,12 +1,11 @@
 'use strict';
-/*global require, after*/
 
-var	async = require('async'),
-	assert = require('assert'),
-	db = require('../mocks/databasemock');
+
+var	async = require('async');
+var assert = require('assert');
+var db = require('../mocks/databasemock');
 
 describe('Key methods', function () {
-
 	beforeEach(function (done) {
 		db.set('testKey', 'testValue', done);
 	});
@@ -78,7 +77,7 @@ describe('Key methods', function () {
 			},
 			function (next) {
 				db.set('key2', 'value2', next);
-			}
+			},
 		], function (err) {
 			if (err) {
 				return done(err);
@@ -92,7 +91,38 @@ describe('Key methods', function () {
 					},
 					key2exists: function (next) {
 						db.exists('key2', next);
-					}
+					},
+				}, function (err, results) {
+					assert.equal(err, null);
+					assert.equal(results.key1exists, false);
+					assert.equal(results.key2exists, false);
+					done();
+				});
+			});
+		});
+	});
+
+	it('should delete all sorted set elements', function (done) {
+		async.parallel([
+			function (next) {
+				db.sortedSetAdd('deletezset', 1, 'value1', next);
+			},
+			function (next) {
+				db.sortedSetAdd('deletezset', 2, 'value2', next);
+			},
+		], function (err) {
+			if (err) {
+				return done(err);
+			}
+			db.delete('deletezset', function (err) {
+				assert.ifError(err);
+				async.parallel({
+					key1exists: function (next) {
+						db.isSortedSetMember('deletezset', 'value1', next);
+					},
+					key2exists: function (next) {
+						db.isSortedSetMember('deletezset', 'value2', next);
+					},
 				}, function (err, results) {
 					assert.equal(err, null);
 					assert.equal(results.key1exists, false);
@@ -139,10 +169,5 @@ describe('Key methods', function () {
 				});
 			});
 		});
-	});
-
-
-	after(function (done) {
-		db.emptydb(done);
 	});
 });

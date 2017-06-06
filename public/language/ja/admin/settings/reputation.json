@@ -1,8 +1,9 @@
 {
-	"reputation": "Reputation Settings",
-	"disable": "Disable Reputation System",
-	"disable-down-voting": "Disable Down Voting",
-	"thresholds": "Activity Thresholds",
-	"min-rep-downvote": "Minimum reputation to downvote posts",
-	"min-rep-flag": "Minimum reputation to flag posts"
+	"reputation": "評価の設定",
+	"disable": "レピュテーションシステムを無効にする",
+	"disable-down-voting": "低評価を無効にする",
+	"votes-are-public": "すべての投票は公開されています",
+	"thresholds": "アクティビティのしきい値",
+	"min-rep-downvote": "投稿をdownvoteするための最低評価",
+	"min-rep-flag": "フラグの投稿に低評価"
 }

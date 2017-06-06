@@ -33,6 +33,7 @@
     "chat": "채팅",
     "chat_with": "Continue chat with %1",
     "new_chat_with": "Start new chat with %1",
+    "flag-profile": "Flag Profile",
     "follow": "팔로우",
     "unfollow": "팔로우 취소",
     "more": "더 보기",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "새 사용자 이름이 이미 존재하여 <strong>%1</strong>로 저장되었습니다.",
     "password_same_as_username": "비밀번호가 사용자명과 동일합니다. 다른 비밀번호를 입력하세요.",
     "password_same_as_email": "비밀번호가 이메일 주소와 동일합니다. 다른 비밀번호를 입력하세요.",
+    "weak_password": "Weak password.",
     "upload_picture": "사진 업로드",
     "upload_a_picture": "사진 업로드",
     "remove_uploaded_picture": "등록된 사진을 삭제",
     "upload_cover_picture": "커버 사진 업로드",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "설정",
     "show_email": "이메일 공개",
     "show_fullname": "실명 공개",
@@ -126,5 +131,6 @@
     "info.username-history": "Username History",
     "info.email-history": "Email History",
     "info.moderation-note": "Moderation Note",
-    "info.moderation-note.success": "Moderation note saved"
+    "info.moderation-note.success": "Moderation note saved",
+    "info.moderation-note.add": "Add note"
 }

@@ -1,14 +1,12 @@
-"use strict";
-
+'use strict';
 
 var async = require('async');
-var nconf = require('nconf');
 var validator = require('validator');
 
 var user = require('../user');
 var topics = require('../topics');
 var pagination = require('../pagination');
-var helpers =  require('./helpers');
+var helpers = require('./helpers');
 
 var tagsController = {};
 
@@ -19,8 +17,8 @@ tagsController.getTag = function (req, res, next) {
 	var templateData = {
 		topics: [],
 		tag: tag,
-		breadcrumbs: helpers.buildBreadcrumbs([{text: '[[tags:tags]]', url: '/tags'}, {text: tag}]),
-		title: '[[pages:tag, ' + tag + ']]'
+		breadcrumbs: helpers.buildBreadcrumbs([{ text: '[[tags:tags]]', url: '/tags' }, { text: tag }]),
+		title: '[[pages:tag, ' + tag + ']]',
 	};
 	var settings;
 	var topicCount = 0;
@@ -39,7 +37,7 @@ tagsController.getTag = function (req, res, next) {
 				},
 				tids: function (next) {
 					topics.getTagTids(req.params.tag, start, stop, next);
-				}
+				},
 			}, next);
 		},
 		function (results, next) {
@@ -48,7 +46,7 @@ tagsController.getTag = function (req, res, next) {
 			}
 			topicCount = results.topicCount;
 			topics.getTopics(results.tids, req.uid, next);
-		}
+		},
 	], function (err, topics) {
 		if (err) {
 			return next(err);
@@ -57,16 +55,12 @@ tagsController.getTag = function (req, res, next) {
 		res.locals.metaTags = [
 			{
 				name: 'title',
-				content: tag
+				content: tag,
 			},
 			{
 				property: 'og:title',
-				content: tag
+				content: tag,
 			},
-			{
-				property: 'og:url',
-				content: nconf.get('url') + '/tags/' + tag
-			}
 		];
 		templateData.topics = topics;
 
@@ -86,8 +80,8 @@ tagsController.getTags = function (req, res, next) {
 		var data = {
 			tags: tags,
 			nextStart: 100,
-			breadcrumbs: helpers.buildBreadcrumbs([{text: '[[tags:tags]]'}]),
-			title: '[[pages:tags]]'
+			breadcrumbs: helpers.buildBreadcrumbs([{ text: '[[tags:tags]]' }]),
+			title: '[[pages:tags]]',
 		};
 		res.render('tags', data);
 	});

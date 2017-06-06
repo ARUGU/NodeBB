@@ -1,12 +1,9 @@
-"use strict";
+'use strict';
 
-var fs = require('fs');
 var path = require('path');
 var async = require('async');
 var nconf = require('nconf');
 var validator = require('validator');
-var winston = require('winston');
-var mime = require('mime');
 
 var meta = require('../meta');
 var file = require('../file');
@@ -31,10 +28,10 @@ uploadsController.upload = function (req, res, filesIterator) {
 		deleteTempFiles(files);
 
 		if (err) {
-			return res.status(500).send(err.message);
+			return res.status(500).json({ path: req.path, error: err.message });
 		}
 
-		res.status(200).send(images);
+		res.status(200).json(images);
 	});
 };
 
@@ -59,12 +56,15 @@ function uploadAsImage(req, uploadedFile, callback) {
 				return next(new Error('[[error:no-privileges]]'));
 			}
 			if (plugins.hasListeners('filter:uploadImage')) {
-				return plugins.fireHook('filter:uploadImage', {image: uploadedFile, uid: req.uid}, callback);
+				return plugins.fireHook('filter:uploadImage', {
+					image: uploadedFile,
+					uid: req.uid,
+				}, callback);
 			}
 			file.isFileTypeAllowed(uploadedFile.path, next);
 		},
 		function (next) {
-			uploadFile(req.uid, uploadedFile, next);
+			uploadsController.uploadFile(req.uid, uploadedFile, next);
 		},
 		function (fileObj, next) {
 			if (parseInt(meta.config.maximumImageWidth, 10) === 0) {
@@ -72,7 +72,7 @@ function uploadAsImage(req, uploadedFile, callback) {
 			}
 
 			resizeImage(fileObj, next);
-		}
+		},
 	], callback);
 }
 
@@ -88,8 +88,8 @@ function uploadAsFile(req, uploadedFile, callback) {
 			if (parseInt(meta.config.allowFileUploads, 10) !== 1) {
 				return next(new Error('[[error:uploads-are-disabled]]'));
 			}
-			uploadFile(req.uid, uploadedFile, next);
-		}
+			uploadsController.uploadFile(req.uid, uploadedFile, next);
+		},
 	], callback);
 }
 
@@ -111,20 +111,19 @@ function resizeImage(fileObj, callback) {
 				path: fileObj.path,
 				target: path.join(dirname, basename + '-resized' + extname),
 				extension: extname,
-				width: parseInt(meta.config.maximumImageWidth, 10) || 760
+				width: parseInt(meta.config.maximumImageWidth, 10) || 760,
 			}, next);
 		},
 		function (next) {
-
 			// Return the resized version to the composer/postData
 			var dirname = path.dirname(fileObj.url);
 			var extname = path.extname(fileObj.url);
 			var basename = path.basename(fileObj.url, extname);
 
-			fileObj.url = path.join(dirname, basename + '-resized' + extname);
+			fileObj.url = dirname + '/' + basename + '-resized' + extname;
 
 			next(null, fileObj);
-		}
+		},
 	], callback);
 }
 
@@ -135,56 +134,68 @@ uploadsController.uploadThumb = function (req, res, next) {
 	}
 
 	uploadsController.upload(req, res, function (uploadedFile, next) {
-		file.isFileTypeAllowed(uploadedFile.path, function (err) {
-			if (err) {
-				return next(err);
-			}
-
-			if (!uploadedFile.type.match(/image./)) {
-				return next(new Error('[[error:invalid-file]]'));
-			}
-
-			var size = parseInt(meta.config.topicThumbSize, 10) || 120;
-			image.resizeImage({
-				path: uploadedFile.path,
-				extension: path.extname(uploadedFile.name),
-				width: size,
-				height: size
-			}, function (err) {
-				if (err) {
-					return next(err);
+		async.waterfall([
+			function (next) {
+				if (!uploadedFile.type.match(/image./)) {
+					return next(new Error('[[error:invalid-file]]'));
 				}
 
+				file.isFileTypeAllowed(uploadedFile.path, next);
+			},
+			function (next) {
+				var size = parseInt(meta.config.topicThumbSize, 10) || 120;
+				image.resizeImage({
+					path: uploadedFile.path,
+					extension: path.extname(uploadedFile.name),
+					width: size,
+					height: size,
+				}, next);
+			},
+			function (next) {
 				if (plugins.hasListeners('filter:uploadImage')) {
-					return plugins.fireHook('filter:uploadImage', {image: uploadedFile, uid: req.uid}, next);
+					return plugins.fireHook('filter:uploadImage', {
+						image: uploadedFile,
+						uid: req.uid,
+					}, next);
 				}
 
-				uploadFile(req.uid, uploadedFile, next);
-			});
-		});
+				uploadsController.uploadFile(req.uid, uploadedFile, next);
+			},
+		], next);
 	}, next);
 };
 
 uploadsController.uploadGroupCover = function (uid, uploadedFile, callback) {
 	if (plugins.hasListeners('filter:uploadImage')) {
-		return plugins.fireHook('filter:uploadImage', {image: uploadedFile, uid: uid}, callback);
+		return plugins.fireHook('filter:uploadImage', {
+			image: uploadedFile,
+			uid: uid,
+		}, callback);
 	}
 
 	if (plugins.hasListeners('filter:uploadFile')) {
-		return plugins.fireHook('filter:uploadFile', {file: uploadedFile, uid: uid}, callback);
+		return plugins.fireHook('filter:uploadFile', {
+			file: uploadedFile,
+			uid: uid,
+		}, callback);
 	}
 
-	file.isFileTypeAllowed(uploadedFile.path, function (err) {
-		if (err) {
-			return callback(err);
-		}
-		saveFileToLocal(uploadedFile, callback);
-	});
+	async.waterfall([
+		function (next) {
+			file.isFileTypeAllowed(uploadedFile.path, next);
+		},
+		function (next) {
+			saveFileToLocal(uploadedFile, next);
+		},
+	], callback);
 };
 
-function uploadFile(uid, uploadedFile, callback) {
+uploadsController.uploadFile = function (uid, uploadedFile, callback) {
 	if (plugins.hasListeners('filter:uploadFile')) {
-		return plugins.fireHook('filter:uploadFile', {file: uploadedFile, uid: uid}, callback);
+		return plugins.fireHook('filter:uploadFile', {
+			file: uploadedFile,
+			uid: uid,
+		}, callback);
 	}
 
 	if (!uploadedFile) {
@@ -195,54 +206,44 @@ function uploadFile(uid, uploadedFile, callback) {
 		return callback(new Error('[[error:file-too-big, ' + meta.config.maximumFileSize + ']]'));
 	}
 
-	if (meta.config.hasOwnProperty('allowedFileExtensions')) {
-		var allowed = file.allowedExtensions();
-		var extension = path.extname(uploadedFile.name);
-		if (!extension) {
-			extension = '.' + mime.extension(uploadedFile.type);
-		}
-		if (allowed.length > 0 && allowed.indexOf(extension) === -1) {
-			return callback(new Error('[[error:invalid-file-type, ' + allowed.join('&#44; ') + ']]'));
-		}
+	var allowed = file.allowedExtensions();
+
+	var extension = path.extname(uploadedFile.name).toLowerCase();
+	if (allowed.length > 0 && (!extension || extension === '.' || allowed.indexOf(extension) === -1)) {
+		return callback(new Error('[[error:invalid-file-type, ' + allowed.join('&#44; ') + ']]'));
 	}
 
 	saveFileToLocal(uploadedFile, callback);
-}
+};
 
 function saveFileToLocal(uploadedFile, callback) {
 	var extension = path.extname(uploadedFile.name);
-	if (!extension && uploadedFile.type) {
-		extension = '.' + mime.extension(uploadedFile.type);
+	if (!extension || extension === '.') {
+		return callback(new Error('[[error:invalid-extension]]'));
 	}
-
 	var filename = uploadedFile.name || 'upload';
 
-	filename = Date.now() + '-' + validator.escape(filename.replace(extension, '')).substr(0, 255) + extension;
+	filename = Date.now() + '-' + validator.escape(filename.replace(path.extname(uploadedFile.name) || '', '')).substr(0, 255) + extension;
 
-	file.saveFileToLocal(filename, 'files', uploadedFile.path, function (err, upload) {
-		if (err) {
-			return callback(err);
-		}
-
-		callback(null, {
-			url: nconf.get('relative_path') + upload.url,
-			path: upload.path,
-			name: uploadedFile.name
-		});
-	});
+	async.waterfall([
+		function (next) {
+			file.saveFileToLocal(filename, 'files', uploadedFile.path, next);
+		},
+		function (upload, next) {
+			next(null, {
+				url: nconf.get('relative_path') + upload.url,
+				path: upload.path,
+				name: uploadedFile.name,
+			});
+		},
+	], callback);
 }
 
 function deleteTempFiles(files) {
-	async.each(files, function (file, next) {
-		fs.unlink(file.path, function (err) {
-			if (err) {
-				winston.error(err);
-			}
-			next();
-		});
+	async.each(files, function (fileObj, next) {
+		file.delete(fileObj.path);
+		next();
 	});
 }
-
-
 
 module.exports = uploadsController;

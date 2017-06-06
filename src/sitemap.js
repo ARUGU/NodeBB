@@ -10,40 +10,34 @@ var topics = require('./topics');
 var privileges = require('./privileges');
 var meta = require('./meta');
 var plugins = require('./plugins');
-var utils = require('../public/src/utils');
+var utils = require('./utils');
 
 var sitemap = {
 	maps: {
-		topics: []
-	}
+		topics: [],
+	},
 };
 
 sitemap.render = function (callback) {
-	var numTopics = parseInt(meta.config.sitemapTopics, 10) || 500;
+	var topicsPerPage = parseInt(meta.config.sitemapTopics, 10) || 500;
 	var returnData = {
-			url: nconf.get('url'),
-			topics: []
-		};
-	var numPages;
+		url: nconf.get('url'),
+		topics: [],
+	};
 
 	async.waterfall([
-		async.apply(db.getSortedSetRange, 'topics:recent', 0, -1),
-		function (tids, next) {
-			privileges.topics.filterTids('read', tids, 0, next);
-		}
-	], function (err, tids) {
-		if (err) {
-			numPages = 1;
-		} else {
-			numPages = Math.ceil(tids.length / numTopics);
-		}
+		function (next) {
+			db.getObjectField('global', 'topicCount', next);
+		},
+		function (topicCount, next) {
+			var numPages = Math.max(0, topicCount / topicsPerPage);
+			for (var x = 1; x <= numPages; x += 1) {
+				returnData.topics.push(x);
+			}
 
-		for(var x = 1; x <= numPages; x++) {
-			returnData.topics.push(x);
-		}
-
-		callback(null, returnData);
-	});
+			next(null, returnData);
+		},
+	], callback);
 };
 
 sitemap.getPages = function (callback) {
@@ -55,31 +49,31 @@ sitemap.getPages = function (callback) {
 	}
 
 	var urls = [{
-			url: '',
-			changefreq: 'weekly',
-			priority: 0.6
-		}, {
-			url: '/recent',
-			changefreq: 'daily',
-			priority: 0.4
-		}, {
-			url: '/users',
-			changefreq: 'daily',
-			priority: 0.4
-		}, {
-			url: '/groups',
-			changefreq: 'daily',
-			priority: 0.4
-		}];
+		url: '',
+		changefreq: 'weekly',
+		priority: 0.6,
+	}, {
+		url: '/recent',
+		changefreq: 'daily',
+		priority: 0.4,
+	}, {
+		url: '/users',
+		changefreq: 'daily',
+		priority: 0.4,
+	}, {
+		url: '/groups',
+		changefreq: 'daily',
+		priority: 0.4,
+	}];
 
-	plugins.fireHook('filter:sitemap.getPages', {urls: urls}, function (err, data) {
+	plugins.fireHook('filter:sitemap.getPages', { urls: urls }, function (err, data) {
 		if (err) {
 			return callback(err);
 		}
 		sitemap.maps.pages = sm.createSitemap({
 			hostname: nconf.get('url'),
 			cacheTime: 1000 * 60 * 60 * 24,	// Cached for 24 hours
-			urls: data.urls
+			urls: data.urls,
 		});
 
 		sitemap.maps.pages.toXML(callback);
@@ -105,7 +99,7 @@ sitemap.getCategories = function (callback) {
 				categoryUrls.push({
 					url: '/category/' + category.slug,
 					changefreq: 'weekly',
-					priority: 0.4
+					priority: 0.4,
 				});
 			}
 		});
@@ -113,7 +107,7 @@ sitemap.getCategories = function (callback) {
 		sitemap.maps.categories = sm.createSitemap({
 			hostname: nconf.get('url'),
 			cacheTime: 1000 * 60 * 60 * 24,	// Cached for 24 hours
-			urls: categoryUrls
+			urls: categoryUrls,
 		});
 
 		sitemap.maps.categories.toXML(callback);
@@ -147,7 +141,7 @@ sitemap.getTopicPage = function (page, callback) {
 		},
 		function (tids, next) {
 			topics.getTopicsFields(tids, ['tid', 'title', 'slug', 'lastposttime'], next);
-		}
+		},
 	], function (err, topics) {
 		if (err) {
 			return callback(err);
@@ -159,7 +153,7 @@ sitemap.getTopicPage = function (page, callback) {
 					url: '/topic/' + topic.slug,
 					lastmodISO: utils.toISOString(topic.lastposttime),
 					changefreq: 'daily',
-					priority: 0.6
+					priority: 0.6,
 				});
 			}
 		});
@@ -167,7 +161,7 @@ sitemap.getTopicPage = function (page, callback) {
 		sitemap.maps.topics[page - 1] = sm.createSitemap({
 			hostname: nconf.get('url'),
 			cacheTime: 1000 * 60 * 60,	// Cached for 1 hour
-			urls: topicUrls
+			urls: topicUrls,
 		});
 
 		sitemap.maps.topics[page - 1].toXML(callback);

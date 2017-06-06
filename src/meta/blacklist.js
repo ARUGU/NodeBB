@@ -3,43 +3,48 @@
 var ip = require('ip');
 var winston = require('winston');
 var async = require('async');
+
 var db = require('../database');
+var pubsub = require('../pubsub');
 
 var Blacklist = {
-		_rules: []
-	};
-
-Blacklist.load = function (callback) {
-	async.waterfall([
-		async.apply(db.get, 'ip-blacklist-rules'),
-		async.apply(Blacklist.validate)
-	], function (err, rules) {
-		if (err) {
-			return callback(err);
-		}
-
-		winston.verbose('[meta/blacklist] Loading ' + rules.valid.length + ' blacklist rules');
-		if (rules.invalid.length) {
-			winston.warn('[meta/blacklist] ' + rules.invalid.length + ' invalid blacklist rule(s) were ignored.');
-		}
-
-		Blacklist._rules = {
-			ipv4: rules.ipv4,
-			ipv6: rules.ipv6,
-			cidr: rules.cidr
-		};
-
-		callback();
-	});
+	_rules: [],
 };
 
+Blacklist.load = function (callback) {
+	callback = callback || function () {};
+
+	async.waterfall([
+		Blacklist.get,
+		Blacklist.validate,
+		function (rules, next) {
+			winston.verbose('[meta/blacklist] Loading ' + rules.valid.length + ' blacklist rules');
+			if (rules.invalid.length) {
+				winston.warn('[meta/blacklist] ' + rules.invalid.length + ' invalid blacklist rule(s) were ignored.');
+			}
+
+			Blacklist._rules = {
+				ipv4: rules.ipv4,
+				ipv6: rules.ipv6,
+				cidr: rules.cidr,
+			};
+			next();
+		},
+	], callback);
+};
+
+pubsub.on('blacklist:reload', Blacklist.load);
+
 Blacklist.save = function (rules, callback) {
-	db.set('ip-blacklist-rules', rules, function (err) {
-		if (err) {
-			return callback(err);
-		}
-		Blacklist.load(callback);
-	});
+	async.waterfall([
+		function (next) {
+			db.set('ip-blacklist-rules', rules, next);
+		},
+		function (next) {
+			Blacklist.load(next);
+			pubsub.publish('blacklist:reload');
+		},
+	], callback);
 };
 
 Blacklist.get = function (callback) {
@@ -48,14 +53,14 @@ Blacklist.get = function (callback) {
 
 Blacklist.test = function (clientIp, callback) {
 	if (
-		Blacklist._rules.ipv4.indexOf(clientIp) === -1	// not explicitly specified in ipv4 list
-		&& Blacklist._rules.ipv6.indexOf(clientIp) === -1	// not explicitly specified in ipv6 list
-		&& !Blacklist._rules.cidr.some(function (subnet) {
+		Blacklist._rules.ipv4.indexOf(clientIp) === -1	&&// not explicitly specified in ipv4 list
+		Blacklist._rules.ipv6.indexOf(clientIp) === -1	&&// not explicitly specified in ipv6 list
+		!Blacklist._rules.cidr.some(function (subnet) {
 			return ip.cidrSubnet(subnet).contains(clientIp);
 		})	// not in a blacklisted cidr range
 	) {
 		if (typeof callback === 'function') {
-			callback();
+			setImmediate(callback);
 		} else {
 			return false;
 		}
@@ -64,7 +69,7 @@ Blacklist.test = function (clientIp, callback) {
 		err.code = 'blacklisted-ip';
 
 		if (typeof callback === 'function') {
-			callback(err);
+			setImmediate(callback, err);
 		} else {
 			return true;
 		}
@@ -78,9 +83,9 @@ Blacklist.validate = function (rules, callback) {
 	var cidr = [];
 	var invalid = [];
 
-	var isCidrSubnet = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$/,
-		inlineCommentMatch = /#.*$/,
-		whitelist = ['127.0.0.1', '::1', '::ffff:0:127.0.0.1'];
+	var isCidrSubnet = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$/;
+	var inlineCommentMatch = /#.*$/;
+	var whitelist = ['127.0.0.1', '::1', '::ffff:0:127.0.0.1'];
 
 	// Filter out blank lines and lines starting with the hash character (comments)
 	// Also trim inputs and remove inline comments
@@ -99,18 +104,18 @@ Blacklist.validate = function (rules, callback) {
 		if (ip.isV4Format(rule)) {
 			ipv4.push(rule);
 			return true;
-		} else if (ip.isV6Format(rule)) {
+		}
+		if (ip.isV6Format(rule)) {
 			ipv6.push(rule);
 			return true;
-		} else if (isCidrSubnet.test(rule)) {
+		}
+		if (isCidrSubnet.test(rule)) {
 			cidr.push(rule);
 			return true;
-		} else {
-			invalid.push(rule);
-			return false;
 		}
 
-		return true;
+		invalid.push(rule);
+		return false;
 	});
 
 	callback(null, {
@@ -119,7 +124,7 @@ Blacklist.validate = function (rules, callback) {
 		ipv6: ipv6,
 		cidr: cidr,
 		valid: rules,
-		invalid: invalid
+		invalid: invalid,
 	});
 };
 

@@ -33,6 +33,7 @@
     "chat": "Conversa",
     "chat_with": "Continuar a conversa com %1",
     "new_chat_with": "Começa nova conversa com %1",
+    "flag-profile": "Flag Profile",
     "follow": "Segue",
     "unfollow": "Deixar de seguir",
     "more": "Mais",
@@ -59,10 +60,14 @@
     "username_taken_workaround": "O nome de utilizador que escolheste já está em utilização por isso alteramo-lo ligeiramente. És agora conhecido como <strong>%1</strong>",
     "password_same_as_username": "A tua palavra-passe é igual ao teu nome de utilizador. Por favor, escolhe outra palavra-passe.",
     "password_same_as_email": "A tua palavra-passe é a mesma que o teu e-mail. Por favor, escolhe outra palavra-passe.",
+    "weak_password": "Weak password.",
     "upload_picture": "Carregar imagem",
     "upload_a_picture": "Carregar uma imagem",
     "remove_uploaded_picture": "Remover imagem carregada",
     "upload_cover_picture": "Carregar fotografia de capa",
+    "remove_cover_picture_confirm": "Are you sure you want to remove the cover picture?",
+    "crop_picture": "Crop picture",
+    "upload_cropped_picture": "Crop and upload",
     "settings": "Definições",
     "show_email": "Mostrar o meu e-mail",
     "show_fullname": "Mostrar o meu nome completo",
@@ -126,5 +131,6 @@
     "info.username-history": "Históricos do nome de utilizador",
     "info.email-history": "Histórico de e-mail",
     "info.moderation-note": "Nota de moderação",
-    "info.moderation-note.success": "Nota de moderação gravada"
+    "info.moderation-note.success": "Nota de moderação gravada",
+    "info.moderation-note.add": "Add note"
 }

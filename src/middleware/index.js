@@ -1,7 +1,6 @@
-"use strict";
+'use strict';
 
 var async = require('async');
-var fs = require('fs');
 var path = require('path');
 var csrf = require('csurf');
 var validator = require('validator');
@@ -10,19 +9,19 @@ var ensureLoggedIn = require('connect-ensure-login');
 var toobusy = require('toobusy-js');
 
 var plugins = require('../plugins');
-var languages = require('../languages');
 var meta = require('../meta');
 var user = require('../user');
 var groups = require('../groups');
+var file = require('../file');
 
 var analytics = require('../analytics');
 
 var controllers = {
 	api: require('./../controllers/api'),
-	helpers: require('../controllers/helpers')
+	helpers: require('../controllers/helpers'),
 };
 
-var middleware = {};
+var middleware = module.exports;
 
 middleware.applyCSRF = csrf();
 
@@ -35,52 +34,14 @@ require('./maintenance')(middleware);
 require('./user')(middleware);
 require('./headers')(middleware);
 
-middleware.authenticate = function (req, res, next) {
-	if (req.user) {
-		return next();
-	} else if (plugins.hasListeners('action:middleware.authenticate')) {
-		return plugins.fireHook('action:middleware.authenticate', {
-			req: req,
-			res: res,
-			next: next
-		});
-	}
-
-	controllers.helpers.notAllowed(req, res);
-};
-
-middleware.ensureSelfOrGlobalPrivilege = function (req, res, next) {
-	/*
-		The "self" part of this middleware hinges on you having used
-		middleware.exposeUid prior to invoking this middleware.
-	*/
-	if (req.user) {
-		if (req.user.uid === res.locals.uid) {
-			return next();
-		}
-
-		user.isAdminOrGlobalMod(req.uid, function (err, ok) {
-			if (err) {
-				return next(err);
-			} else if (ok) {
-				return next();
-			} else {
-				controllers.helpers.notAllowed(req, res);
-			}
-		});
-	} else {
-		controllers.helpers.notAllowed(req, res);
-	}
-};
-
 middleware.pageView = function (req, res, next) {
 	analytics.pageView({
 		ip: req.ip,
 		path: req.path,
-		uid: req.uid
+		uid: req.uid,
 	});
 
-	plugins.fireHook('action:middleware.pageView', {req: req});
+	plugins.fireHook('action:middleware.pageView', { req: req });
 
 	if (req.user) {
 		user.updateLastOnlineTime(req.user.uid);
@@ -99,9 +60,9 @@ middleware.pageView = function (req, res, next) {
 middleware.pluginHooks = function (req, res, next) {
 	async.each(plugins.loadedHooks['filter:router.page'] || [], function (hookObj, next) {
 		hookObj.method(req, res, next);
-	}, function () {
+	}, function (err) {
 		// If it got here, then none of the subscribed hooks did anything, or there were no hooks
-		next();
+		next(err);
 	});
 };
 
@@ -121,11 +82,10 @@ middleware.prepareAPI = function (req, res, next) {
 middleware.routeTouchIcon = function (req, res) {
 	if (meta.config['brand:touchIcon'] && validator.isURL(meta.config['brand:touchIcon'])) {
 		return res.redirect(meta.config['brand:touchIcon']);
-	} else {
-		return res.sendFile(path.join(__dirname, '../../public', meta.config['brand:touchIcon'] || '/logo.png'), {
-			maxAge: req.app.enabled('cache') ? 5184000000 : 0
-		});
 	}
+	return res.sendFile(path.join(__dirname, '../../public', meta.config['brand:touchIcon'] || '/logo.png'), {
+		maxAge: req.app.enabled('cache') ? 5184000000 : 0,
+	});
 };
 
 middleware.privateTagListing = function (req, res, next) {
@@ -148,21 +108,22 @@ function expose(exposedField, method, field, req, res, next) {
 	if (!req.params.hasOwnProperty(field)) {
 		return next();
 	}
-	method(req.params[field], function (err, id) {
-		if (err) {
-			return next(err);
-		}
-
-		res.locals[exposedField] = id;
-		next();
-	});
+	async.waterfall([
+		function (next) {
+			method(req.params[field], next);
+		},
+		function (id, next) {
+			res.locals[exposedField] = id;
+			next();
+		},
+	], next);
 }
 
 middleware.privateUploads = function (req, res, next) {
 	if (req.user || parseInt(meta.config.privateUploads, 10) !== 1) {
 		return next();
 	}
-	if (req.path.startsWith('/uploads/files')) {
+	if (req.path.startsWith('/assets/uploads/files')) {
 		return res.status(403).json('not-allowed');
 	}
 	next();
@@ -183,44 +144,25 @@ middleware.applyBlacklist = function (req, res, next) {
 	});
 };
 
-middleware.getTranslation = function (req, res, next) {
-	var language = req.params.language;
-	var namespace = req.params.namespace;
-
-	if (language && namespace) {
-		languages.get(language, namespace, function (err, translations) {
-			if (err) {
-				return next(err);
-			}
-
-			res.status(200).json(translations);
-		});
-	} else {
-		res.status(404).json('{}');
-	}
-};
-
 middleware.processTimeagoLocales = function (req, res, next) {
-	var fallback = req.path.indexOf('-short') === -1 ? 'jquery.timeago.en.js' : 'jquery.timeago.en-short.js',
-		localPath = path.join(__dirname, '../../public/vendor/jquery/timeago/locales', req.path),
-		exists;
+	var fallback = req.path.indexOf('-short') === -1 ? 'jquery.timeago.en.js' : 'jquery.timeago.en-short.js';
+	var localPath = path.join(__dirname, '../../public/vendor/jquery/timeago/locales', req.path);
 
-	try {
-		exists = fs.accessSync(localPath, fs.F_OK | fs.R_OK);
-	} catch(e) {
-		exists = false;
-	}
-
-	if (exists) {
-		res.status(200).sendFile(localPath, {
-			maxAge: req.app.enabled('cache') ? 5184000000 : 0
-		});
-	} else {
-		res.status(200).sendFile(path.join(__dirname, '../../public/vendor/jquery/timeago/locales', fallback), {
-			maxAge: req.app.enabled('cache') ? 5184000000 : 0
-		});
-	}
+	async.waterfall([
+		function (next) {
+			file.exists(localPath, next);
+		},
+		function (exists, next) {
+			if (exists) {
+				next(null, localPath);
+			} else {
+				next(null, path.join(__dirname, '../../public/vendor/jquery/timeago/locales', fallback));
+			}
+		},
+		function (path) {
+			res.status(200).sendFile(path, {
+				maxAge: req.app.enabled('cache') ? 5184000000 : 0,
+			});
+		},
+	], next);
 };
-
-
-module.exports = middleware;
